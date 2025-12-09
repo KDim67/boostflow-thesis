@@ -7,7 +7,15 @@
 
 BoostFlow is an AI-powered productivity platform designed to help teams automate repetitive tasks, manage projects efficiently, and enhance collaboration across organizations of all sizes.
 
-### Home Page
+## Academic Attribution
+
+This repository contains the source code for the B.Sc. Thesis "Design and Implementation of a DevSecOps Lifecycle"
+
+**Historical Context**: The core application (boostflow) was originally developed as a team project for the DevOps course by [Dimitrios Koutsompinas](https://github.com/KDim67), [Evangelos Leivaditis](https://github.com/EvanLei-git), and [Nikolaos Douros](https://github.com/nikosd767).
+
+**Thesis Scope**: All commits after tag `team-submission-final` (Date: 12/09/2025) represent the individual work of [Dimitrios Koutsompinas](https://github.com/KDim67).
+
+## Home Page
 <img src="public/previews/main_page_preview.png" alt="Home Page" width="800" />
 
 ## Features
@@ -259,19 +267,7 @@ src/
 - Team collaboration tools
 - Email integration with SendGrid
 
-## Security Features
 
-- Firebase Security Rules for data protection
-- Role-based access control
-- Secure file upload with validation
-- Environment variable protection
-- HTTPS enforcement in production
-
-## Authors
-
-- **Dimitris Koutsompinas** @KDim67
-- **Evangelos Leivaditis** @EvanLei-git
-- **Nikolaos Douros** @nikosd767
 
 ---
 
