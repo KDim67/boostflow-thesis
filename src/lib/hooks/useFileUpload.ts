@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useAuth } from '@/lib/firebase/useAuth';
+import { useState } from "react";
+import { useAuth } from "@/lib/firebase/useAuth";
 
 /**
  * Configuration options for file upload operations
@@ -14,7 +14,7 @@ interface UploadOptions {
 /**
  * Custom React hook for handling file uploads to different endpoints
  * Manages upload state, progress tracking, and authentication
- * 
+ *
  * @returns Object containing upload state and upload functions
  */
 export function useFileUpload() {
@@ -24,7 +24,7 @@ export function useFileUpload() {
 
   /**
    * Uploads a profile picture for the current user
-   * 
+   *
    * @param file - The image file to upload
    * @param options - Optional callbacks for upload events
    * @returns Promise resolving to upload result or undefined on error
@@ -32,7 +32,7 @@ export function useFileUpload() {
   const uploadProfilePicture = async (file: File, options?: UploadOptions) => {
     // Ensure user is authenticated before proceeding
     if (!user) {
-      options?.onError?.('User not authenticated');
+      options?.onError?.("User not authenticated");
       return;
     }
 
@@ -43,16 +43,16 @@ export function useFileUpload() {
     try {
       // Prepare multipart form data for file upload
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append("file", file);
 
       // Get fresh authentication token for API request
       const token = await user.getIdToken();
-      
+
       // Send file to profile picture upload endpoint
-      const response = await fetch('/api/upload/profile-picture', {
-        method: 'POST',
+      const response = await fetch("/api/upload/profile-picture", {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: formData,
       });
@@ -61,7 +61,7 @@ export function useFileUpload() {
 
       // Check if upload was successful
       if (!response.ok) {
-        throw new Error(result.error || 'Upload failed');
+        throw new Error(result.error || "Upload failed");
       }
 
       // Mark upload as complete and notify success
@@ -70,7 +70,8 @@ export function useFileUpload() {
       return result;
     } catch (error) {
       // Handle and propagate upload errors
-      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+      const errorMessage =
+        error instanceof Error ? error.message : "Upload failed";
       options?.onError?.(errorMessage);
       throw error;
     } finally {
@@ -83,7 +84,7 @@ export function useFileUpload() {
 
   /**
    * Uploads a document to a specific project within an organization
-   * 
+   *
    * @param file - The document file to upload
    * @param projectId - ID of the target project
    * @param organizationId - ID of the organization containing the project
@@ -100,7 +101,7 @@ export function useFileUpload() {
   ) => {
     // Ensure user is authenticated before proceeding
     if (!user) {
-      options?.onError?.('User not authenticated');
+      options?.onError?.("User not authenticated");
       return;
     }
 
@@ -111,22 +112,22 @@ export function useFileUpload() {
     try {
       // Prepare form data with file and project metadata
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('projectId', projectId);
-      formData.append('organizationId', organizationId);
+      formData.append("file", file);
+      formData.append("projectId", projectId);
+      formData.append("organizationId", organizationId);
       // Add optional folder path if specified
       if (folder) {
-        formData.append('folder', folder);
+        formData.append("folder", folder);
       }
 
       // Get fresh authentication token for API request
       const token = await user.getIdToken();
-      
+
       // Send file to project documents upload endpoint
-      const response = await fetch('/api/upload/project-documents', {
-        method: 'POST',
+      const response = await fetch("/api/upload/project-documents", {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: formData,
       });
@@ -134,14 +135,15 @@ export function useFileUpload() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || 'Upload failed');
+        throw new Error(result.error || "Upload failed");
       }
 
       setProgress(100);
       options?.onSuccess?.(result);
       return result;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+      const errorMessage =
+        error instanceof Error ? error.message : "Upload failed";
       options?.onError?.(errorMessage);
       throw error;
     } finally {
@@ -152,16 +154,20 @@ export function useFileUpload() {
 
   /**
    * Uploads a logo image for an organization
-   * 
+   *
    * @param file - The logo image file to upload
    * @param organizationId - ID of the target organization
    * @param options - Optional callbacks for upload events
    * @returns Promise resolving to upload result or undefined on error
    */
-  const uploadOrganizationLogo = async (file: File, organizationId: string, options?: UploadOptions) => {
+  const uploadOrganizationLogo = async (
+    file: File,
+    organizationId: string,
+    options?: UploadOptions
+  ) => {
     // Ensure user is authenticated before proceeding
     if (!user) {
-      options?.onError?.('User not authenticated');
+      options?.onError?.("User not authenticated");
       return;
     }
 
@@ -172,17 +178,17 @@ export function useFileUpload() {
     try {
       // Prepare form data with logo file and organization ID
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('organizationId', organizationId);
+      formData.append("file", file);
+      formData.append("organizationId", organizationId);
 
       // Get fresh authentication token for API request
       const token = await user.getIdToken();
-      
+
       // Send file to organization logo upload endpoint
-      const response = await fetch('/api/upload/organization-logo', {
-        method: 'POST',
+      const response = await fetch("/api/upload/organization-logo", {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: formData,
       });
@@ -190,14 +196,15 @@ export function useFileUpload() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || 'Upload failed');
+        throw new Error(result.error || "Upload failed");
       }
 
       setProgress(100);
       options?.onSuccess?.(result);
       return result;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+      const errorMessage =
+        error instanceof Error ? error.message : "Upload failed";
       options?.onError?.(errorMessage);
       throw error;
     } finally {

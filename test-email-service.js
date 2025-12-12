@@ -1,66 +1,74 @@
 // Test BoostFlow EmailService implementation
 // Run with: node test-email-service.js
 
-require('dotenv').config({ path: '.env.local' });
+require("dotenv").config({ path: ".env.local" });
 
 // Import our email service (we'll use require since this is a .js file)
-const path = require('path');
+const path = require("path");
 
 // Since we're testing from root, we need to compile TypeScript or use a different approach
 // Let's create a simple test that mimics our service
-const sgMail = require('@sendgrid/mail');
+const sgMail = require("@sendgrid/mail");
 
 // Simple logger for testing
 const logger = {
-  info: (msg, data) => console.log('ℹ️ ', msg, data || ''),
-  error: (msg, error) => console.error('❌', msg, error || ''),
-  warn: (msg) => console.warn('⚠️ ', msg)
+  info: (msg, data) => console.log("ℹ️ ", msg, data || ""),
+  error: (msg, error) => console.error("❌", msg, error || ""),
+  warn: (msg) => console.warn("⚠️ ", msg),
 };
 
 // Simplified SendGrid provider for testing
 class TestSendGridProvider {
   constructor() {
-    this.apiKey = process.env.SENDGRID_API_KEY || '';
+    this.apiKey = process.env.SENDGRID_API_KEY || "";
     if (!this.apiKey) {
-      logger.warn('SendGrid API key not found. Email sending will fail.');
+      logger.warn("SendGrid API key not found. Email sending will fail.");
     }
   }
 
   async sendEmail(options) {
     try {
       if (!this.apiKey) {
-        throw new Error('SendGrid API key is not configured');
+        throw new Error("SendGrid API key is not configured");
       }
 
       sgMail.setApiKey(this.apiKey);
 
       const msg = {
         to: options.to,
-        from: options.from || process.env.DEFAULT_FROM_EMAIL || 'noreply@boostflow.me',
+        from:
+          options.from ||
+          process.env.DEFAULT_FROM_EMAIL ||
+          "noreply@boostflow.me",
         cc: options.cc,
         bcc: options.bcc,
         subject: options.subject,
         text: options.text,
         html: options.html,
-        attachments: options.attachments?.map(att => ({
+        attachments: options.attachments?.map((att) => ({
           filename: att.filename,
-          content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
+          content: Buffer.isBuffer(att.content)
+            ? att.content.toString("base64")
+            : att.content,
           type: att.contentType,
         })),
       };
 
       const result = await sgMail.send(msg);
-      logger.info('Email sent via SendGrid', { to: options.to, subject: options.subject });
-      
+      logger.info("Email sent via SendGrid", {
+        to: options.to,
+        subject: options.subject,
+      });
+
       return {
         success: true,
-        messageId: result[0].headers['x-message-id'],
+        messageId: result[0].headers["x-message-id"],
       };
     } catch (error) {
-      logger.error('Failed to send email via SendGrid', error);
+      logger.error("Failed to send email via SendGrid", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -91,22 +99,25 @@ class TestSendGridProvider {
 
 // Test the service
 async function testEmailService() {
-  console.log('🧪 Testing BoostFlow Email Service Implementation\n');
-  
+  console.log("🧪 Testing BoostFlow Email Service Implementation\n");
+
   const emailProvider = new TestSendGridProvider();
-  
-  console.log('📋 Configuration:');
-  console.log('- EMAIL_PROVIDER:', process.env.EMAIL_PROVIDER);
-  console.log('- SENDGRID_API_KEY:', process.env.SENDGRID_API_KEY ? 'Configured' : 'Missing');
-  console.log('- DEFAULT_FROM_EMAIL:', process.env.DEFAULT_FROM_EMAIL);
-  console.log('');
+
+  console.log("📋 Configuration:");
+  console.log("- EMAIL_PROVIDER:", process.env.EMAIL_PROVIDER);
+  console.log(
+    "- SENDGRID_API_KEY:",
+    process.env.SENDGRID_API_KEY ? "Configured" : "Missing"
+  );
+  console.log("- DEFAULT_FROM_EMAIL:", process.env.DEFAULT_FROM_EMAIL);
+  console.log("");
 
   // Test 1: Simple email
-  console.log('📧 Test 1: Sending simple test email...');
+  console.log("📧 Test 1: Sending simple test email...");
   const simpleResult = await emailProvider.sendEmail({
-    to: 'it2022150@hua.gr',
-    subject: 'BoostFlow Email Service Test',
-    text: 'This is a test of the BoostFlow email service implementation.',
+    to: "it2022150@hua.gr",
+    subject: "BoostFlow Email Service Test",
+    text: "This is a test of the BoostFlow email service implementation.",
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #333;">BoostFlow Email Service Test</h2>
@@ -114,26 +125,26 @@ async function testEmailService() {
         <p><strong>Test Date:</strong> ${new Date().toLocaleString()}</p>
         <p>✅ If you received this, the email service is working correctly!</p>
       </div>
-    `
+    `,
   });
-  
-  console.log('Result:', simpleResult);
-  console.log('');
+
+  console.log("Result:", simpleResult);
+  console.log("");
 
   // Test 2: Invitation email template
-  console.log('📧 Test 2: Sending invitation email template...');
+  console.log("📧 Test 2: Sending invitation email template...");
   const inviteResult = await emailProvider.sendInvitationEmail({
-    to: 'it2022053@hua.gr',
-    inviterName: 'Test Admin',
-    organizationName: 'Test Organization',
-    inviteUrl: 'https://boostflow.me/invite/test123'
+    to: "it2022053@hua.gr",
+    inviterName: "Test Admin",
+    organizationName: "Test Organization",
+    inviteUrl: "https://boostflow.me/invite/test123",
   });
-  
-  console.log('Result:', inviteResult);
-  console.log('');
 
-  console.log('🎉 Email service testing completed!');
-  console.log('📬 Check your email at it2022053@hua.gr for the test messages.');
+  console.log("Result:", inviteResult);
+  console.log("");
+
+  console.log("🎉 Email service testing completed!");
+  console.log("📬 Check your email at it2022053@hua.gr for the test messages.");
 }
 
 // Run the test

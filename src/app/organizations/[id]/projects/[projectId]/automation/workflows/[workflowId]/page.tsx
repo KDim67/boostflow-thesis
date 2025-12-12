@@ -1,13 +1,16 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/firebase/useAuth';
-import { hasOrganizationPermission, getOrganization } from '@/lib/firebase/organizationService';
-import { getDocument } from '@/lib/firebase/firestoreService';
-import WorkflowAutomation from '@/components/dashboard/WorkflowAutomation';
-import { ArrowLeft } from 'lucide-react';
-import { Organization, Project } from '@/lib/types/organization';
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "@/lib/firebase/useAuth";
+import {
+  hasOrganizationPermission,
+  getOrganization,
+} from "@/lib/firebase/organizationService";
+import { getDocument } from "@/lib/firebase/firestoreService";
+import WorkflowAutomation from "@/components/dashboard/WorkflowAutomation";
+import { ArrowLeft } from "lucide-react";
+import { Organization, Project } from "@/lib/types/organization";
 
 /**
  * WorkflowEditPage - Page component for editing manual workflows
@@ -17,50 +20,60 @@ export default function WorkflowEditPage() {
   // Extract dynamic route parameters from URL
   const { id, projectId, workflowId } = useParams();
   const router = useRouter();
-  
+
   // Component state management
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [project, setProject] = useState<Project | null>(null);
-  
+
   // Get current authenticated user
   const { user } = useAuth();
-  
+
   // Convert URL parameters to strings (Next.js params can be arrays)
-  const organizationId = Array.isArray(id) ? id[0] : id as string;
-  const projectIdString = Array.isArray(projectId) ? projectId[0] : projectId as string;
-  const workflowIdString = Array.isArray(workflowId) ? workflowId[0] : workflowId as string;
+  const organizationId = Array.isArray(id) ? id[0] : (id as string);
+  const projectIdString = Array.isArray(projectId)
+    ? projectId[0]
+    : (projectId as string);
+  const workflowIdString = Array.isArray(workflowId)
+    ? workflowId[0]
+    : (workflowId as string);
 
   // Load organization and project data with permission validation
   useEffect(() => {
     const loadData = async () => {
       // Early return if required data is missing
       if (!user || !organizationId || !projectIdString) return;
-      
+
       try {
         setIsLoading(true);
         setError(null);
-        
+
         // Check if user has minimum required permissions (member level)
-        const permission = await hasOrganizationPermission(user.uid, organizationId, 'member');
-        
+        const permission = await hasOrganizationPermission(
+          user.uid,
+          organizationId,
+          "member"
+        );
+
         if (!permission) {
-          setError('You do not have permission to access automation features.');
+          setError("You do not have permission to access automation features.");
           return;
         }
 
         // Fetch organization and project data in parallel for better performance
         const [orgData, projectData] = await Promise.all([
           getOrganization(organizationId),
-          getDocument('projects', projectIdString) as Promise<Project | null>
+          getDocument("projects", projectIdString) as Promise<Project | null>,
         ]);
 
         setOrganization(orgData);
         setProject(projectData);
       } catch (error) {
-        console.error('Error loading data:', error);
-        setError('Failed to load organization or project data. Please try again.');
+        console.error("Error loading data:", error);
+        setError(
+          "Failed to load organization or project data. Please try again."
+        );
       } finally {
         // Ensure loading state is cleared regardless of success/failure
         setIsLoading(false);
@@ -119,9 +132,13 @@ export default function WorkflowEditPage() {
               Back
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Manual Workflow</h1>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                Edit Manual Workflow
+              </h1>
               <p className="text-gray-500 dark:text-gray-400 mt-1">
-                Configure manual workflow for {project?.name || 'your project'} in {organization?.name || 'your organization'} - runs only when you execute it
+                Configure manual workflow for {project?.name || "your project"}{" "}
+                in {organization?.name || "your organization"} - runs only when
+                you execute it
               </p>
             </div>
           </div>
@@ -131,7 +148,7 @@ export default function WorkflowEditPage() {
         <div className="p-6">
           {/* Only render WorkflowAutomation if user is authenticated */}
           {user && (
-            <WorkflowAutomation 
+            <WorkflowAutomation
               workflowId={workflowIdString}
               projectId={projectIdString}
               currentUser={user.uid}

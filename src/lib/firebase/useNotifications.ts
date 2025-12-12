@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Unsubscribe } from 'firebase/firestore';
-import { NotificationService } from './notificationService';
-import { Notification, NotificationType } from '../types/notification';
-import { useAuth } from './useAuth';
-import { createLogger } from '../utils/logger';
+import { useState, useEffect, useCallback } from "react";
+import { Unsubscribe } from "firebase/firestore";
+import { NotificationService } from "./notificationService";
+import { Notification, NotificationType } from "../types/notification";
+import { useAuth } from "./useAuth";
+import { createLogger } from "../utils/logger";
 
-const logger = createLogger('useNotifications');
+const logger = createLogger("useNotifications");
 
 /**
  * Custom hook for managing user notifications with real-time updates
@@ -22,17 +22,20 @@ export const useNotifications = (includeHidden: boolean = false) => {
 
   // Helper function to calculate and update unread notification count
   const updateUnreadCount = useCallback((notificationList: Notification[]) => {
-    const count = notificationList.filter(n => !n.read).length;
+    const count = notificationList.filter((n) => !n.read).length;
     setUnreadCount(count);
   }, []);
 
   // Callback for handling real-time notification updates from Firebase
-  const handleNotificationsUpdate = useCallback((newNotifications: Notification[]) => {
-    setNotifications(newNotifications);
-    updateUnreadCount(newNotifications);
-    setIsLoading(false);
-    setError(null);
-  }, [updateUnreadCount]);
+  const handleNotificationsUpdate = useCallback(
+    (newNotifications: Notification[]) => {
+      setNotifications(newNotifications);
+      updateUnreadCount(newNotifications);
+      setIsLoading(false);
+      setError(null);
+    },
+    [updateUnreadCount]
+  );
 
   // Set up real-time subscription to user notifications
   useEffect(() => {
@@ -56,8 +59,8 @@ export const useNotifications = (includeHidden: boolean = false) => {
         includeHidden
       );
     } catch (err) {
-      logger.error('Error subscribing to notifications:', err as Error);
-      setError('Failed to load notifications');
+      logger.error("Error subscribing to notifications:", err as Error);
+      setError("Failed to load notifications");
       setIsLoading(false);
     }
 
@@ -74,31 +77,27 @@ export const useNotifications = (includeHidden: boolean = false) => {
     try {
       await NotificationService.markAsRead(notificationId);
       // Update local state immediately for better UX
-      setNotifications(prev => 
-        prev.map(n => 
-          n.id === notificationId ? { ...n, read: true } : n
-        )
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
       );
     } catch (err) {
-      logger.error('Error marking notification as read:', err as Error);
-      setError('Failed to mark notification as read');
+      logger.error("Error marking notification as read:", err as Error);
+      setError("Failed to mark notification as read");
     }
   }, []);
 
   // Mark all user notifications as read
   const markAllAsRead = useCallback(async () => {
     if (!user?.uid) return;
-    
+
     try {
       await NotificationService.markAllAsRead(user.uid);
       // Update all notifications to read state and reset unread count
-      setNotifications(prev => 
-        prev.map(n => ({ ...n, read: true }))
-      );
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch (err) {
-      logger.error('Error marking all notifications as read:', err as Error);
-      setError('Failed to mark all notifications as read');
+      logger.error("Error marking all notifications as read:", err as Error);
+      setError("Failed to mark all notifications as read");
     }
   }, [user?.uid]);
 
@@ -107,57 +106,61 @@ export const useNotifications = (includeHidden: boolean = false) => {
     try {
       await NotificationService.deleteNotification(notificationId);
       // Remove from local state immediately
-      setNotifications(prev => 
-        prev.filter(n => n.id !== notificationId)
-      );
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
     } catch (err) {
-      logger.error('Error deleting notification:', err as Error);
-      setError('Failed to delete notification');
+      logger.error("Error deleting notification:", err as Error);
+      setError("Failed to delete notification");
     }
   }, []);
 
   // Hide notification from dropdown without deleting it
-  const hideFromDropdown = useCallback(async (notificationId: string) => {
-    try {
-      await NotificationService.hideFromDropdown(notificationId);
-      // Only remove from local state if we're not including hidden notifications
-      if (!includeHidden) {
-        setNotifications(prev => 
-          prev.filter(n => n.id !== notificationId)
-        );
+  const hideFromDropdown = useCallback(
+    async (notificationId: string) => {
+      try {
+        await NotificationService.hideFromDropdown(notificationId);
+        // Only remove from local state if we're not including hidden notifications
+        if (!includeHidden) {
+          setNotifications((prev) =>
+            prev.filter((n) => n.id !== notificationId)
+          );
+        }
+      } catch (err) {
+        logger.error("Error hiding notification from dropdown:", err as Error);
+        setError("Failed to hide notification");
       }
-    } catch (err) {
-      logger.error('Error hiding notification from dropdown:', err as Error);
-      setError('Failed to hide notification');
-    }
-  }, [includeHidden]);
+    },
+    [includeHidden]
+  );
 
   // Create a new notification for the current user
-  const createNotification = useCallback(async (
-    title: string,
-    message: string,
-    type: NotificationType,
-    organizationId?: string,
-    actionUrl?: string,
-    metadata?: { [key: string]: any }
-  ) => {
-    if (!user?.uid) return;
-    
-    try {
-      await NotificationService.createNotification(
-        user.uid,
-        title,
-        message,
-        type,
-        organizationId,
-        actionUrl,
-        metadata
-      );
-    } catch (err) {
-      logger.error('Error creating notification:', err as Error);
-      setError('Failed to create notification');
-    }
-  }, [user?.uid]);
+  const createNotification = useCallback(
+    async (
+      title: string,
+      message: string,
+      type: NotificationType,
+      organizationId?: string,
+      actionUrl?: string,
+      metadata?: { [key: string]: any }
+    ) => {
+      if (!user?.uid) return;
+
+      try {
+        await NotificationService.createNotification(
+          user.uid,
+          title,
+          message,
+          type,
+          organizationId,
+          actionUrl,
+          metadata
+        );
+      } catch (err) {
+        logger.error("Error creating notification:", err as Error);
+        setError("Failed to create notification");
+      }
+    },
+    [user?.uid]
+  );
 
   // Clear any error state
   const clearError = useCallback(() => {
@@ -174,6 +177,6 @@ export const useNotifications = (includeHidden: boolean = false) => {
     deleteNotification,
     hideFromDropdown,
     createNotification,
-    clearError
+    clearError,
   };
 };

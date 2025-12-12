@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { usePathname } from 'next/navigation';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
-import { useSuspensionCheck } from '@/lib/hooks/useSuspensionCheck';
+import { usePathname } from "next/navigation";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { useSuspensionCheck } from "@/lib/hooks/useSuspensionCheck";
 
 interface LayoutWrapperProps {
   children: React.ReactNode;
@@ -16,11 +16,11 @@ interface LayoutWrapperProps {
  */
 export default function LayoutWrapper({ children }: LayoutWrapperProps) {
   const pathname = usePathname();
-  
+
   // Route detection for conditional layout rendering
-  const isAdminPanel = pathname?.startsWith('/platform-admin');
-  const isSuspendedPage = pathname === '/suspended';
-  const isAuthPage = pathname === '/login' || pathname === '/signup';
+  const isAdminPanel = pathname?.startsWith("/platform-admin");
+  const isSuspendedPage = pathname === "/suspended";
+  const isAuthPage = pathname === "/login" || pathname === "/signup";
 
   // Skip suspension checks for pages that don't require user authentication
   const shouldCheckSuspension = !isSuspendedPage && !isAuthPage;

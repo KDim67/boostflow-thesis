@@ -1,6 +1,6 @@
-import { createLogger } from '../utils/logger';
+import { createLogger } from "../utils/logger";
 
-const logger = createLogger('EmailService');
+const logger = createLogger("EmailService");
 
 export interface EmailOptions {
   to: string | string[];
@@ -18,11 +18,13 @@ export interface EmailOptions {
 }
 
 export interface EmailProvider {
-  sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }>;
+  sendEmail(
+    options: EmailOptions
+  ): Promise<{ success: boolean; messageId?: string; error?: string }>;
 }
 
 // Check if we're running on the server side
-const isServer = typeof window === 'undefined';
+const isServer = typeof window === "undefined";
 
 // MailHog provider for development
 class MailHogProvider implements EmailProvider {
@@ -30,23 +32,25 @@ class MailHogProvider implements EmailProvider {
   private smtpPort: number;
 
   constructor() {
-    this.smtpHost = process.env.MAILHOG_HOST || 'localhost';
-    this.smtpPort = parseInt(process.env.MAILHOG_PORT || '1025');
+    this.smtpHost = process.env.MAILHOG_HOST || "localhost";
+    this.smtpPort = parseInt(process.env.MAILHOG_PORT || "1025");
   }
 
-  async sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  async sendEmail(
+    options: EmailOptions
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     if (!isServer) {
-      logger.error('Email service can only be used on the server side');
+      logger.error("Email service can only be used on the server side");
       return {
         success: false,
-        error: 'Email service can only be used on the server side',
+        error: "Email service can only be used on the server side",
       };
     }
 
     try {
       // For MailHog, we'll use nodemailer
-      const nodemailer = await import('nodemailer');
-      
+      const nodemailer = await import("nodemailer");
+
       const transporter = nodemailer.createTransport({
         host: this.smtpHost,
         port: this.smtpPort,
@@ -55,10 +59,13 @@ class MailHogProvider implements EmailProvider {
       });
 
       const mailOptions = {
-        from: options.from || process.env.DEFAULT_FROM_EMAIL || 'noreply@boostflow.me',
-        to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
-        cc: options.cc?.join(', '),
-        bcc: options.bcc?.join(', '),
+        from:
+          options.from ||
+          process.env.DEFAULT_FROM_EMAIL ||
+          "noreply@boostflow.me",
+        to: Array.isArray(options.to) ? options.to.join(", ") : options.to,
+        cc: options.cc?.join(", "),
+        bcc: options.bcc?.join(", "),
         subject: options.subject,
         text: options.text,
         html: options.html,
@@ -66,17 +73,21 @@ class MailHogProvider implements EmailProvider {
       };
 
       const result = await transporter.sendMail(mailOptions);
-      logger.info('Email sent via MailHog', { to: options.to, subject: options.subject, messageId: result.messageId });
-      
+      logger.info("Email sent via MailHog", {
+        to: options.to,
+        subject: options.subject,
+        messageId: result.messageId,
+      });
+
       return {
         success: true,
         messageId: result.messageId,
       };
     } catch (error) {
-      logger.error('Failed to send email via MailHog', error as Error);
+      logger.error("Failed to send email via MailHog", error as Error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -87,56 +98,66 @@ class SendGridProvider implements EmailProvider {
   private apiKey: string;
 
   constructor() {
-    this.apiKey = process.env.SENDGRID_API_KEY || '';
+    this.apiKey = process.env.SENDGRID_API_KEY || "";
     if (!this.apiKey && isServer) {
-      logger.warn('SendGrid API key not found. Email sending will fail.');
+      logger.warn("SendGrid API key not found. Email sending will fail.");
     }
   }
 
-  async sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  async sendEmail(
+    options: EmailOptions
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     if (!isServer) {
-      logger.error('Email service can only be used on the server side');
+      logger.error("Email service can only be used on the server side");
       return {
         success: false,
-        error: 'Email service can only be used on the server side',
+        error: "Email service can only be used on the server side",
       };
     }
 
     try {
       if (!this.apiKey) {
-        throw new Error('SendGrid API key is not configured');
+        throw new Error("SendGrid API key is not configured");
       }
 
-      const sgMail = await import('@sendgrid/mail');
+      const sgMail = await import("@sendgrid/mail");
       sgMail.default.setApiKey(this.apiKey);
 
       const msg = {
         to: options.to,
-        from: options.from || process.env.DEFAULT_FROM_EMAIL || 'noreply@boostflow.me',
+        from:
+          options.from ||
+          process.env.DEFAULT_FROM_EMAIL ||
+          "noreply@boostflow.me",
         cc: options.cc,
         bcc: options.bcc,
         subject: options.subject,
         text: options.text,
         html: options.html,
-        attachments: options.attachments?.map(att => ({
+        attachments: options.attachments?.map((att) => ({
           filename: att.filename,
-          content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
+          content: Buffer.isBuffer(att.content)
+            ? att.content.toString("base64")
+            : att.content,
           type: att.contentType,
         })),
       };
 
       const result = await sgMail.default.send(msg);
-      logger.info('Email sent via SendGrid', { to: options.to, subject: options.subject });
-      
+      logger.info("Email sent via SendGrid", {
+        to: options.to,
+        subject: options.subject,
+      });
+
       return {
         success: true,
-        messageId: result[0].headers['x-message-id'],
+        messageId: result[0].headers["x-message-id"],
       };
     } catch (error) {
-      logger.error('Failed to send email via SendGrid', error as Error);
+      logger.error("Failed to send email via SendGrid", error as Error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -148,47 +169,53 @@ class EmailService {
 
   constructor() {
     if (!isServer) {
-      logger.warn('EmailService initialized on client side - email functionality will be disabled');
+      logger.warn(
+        "EmailService initialized on client side - email functionality will be disabled"
+      );
       return;
     }
 
-    const environment = process.env.NODE_ENV || 'development';
-    
+    const environment = process.env.NODE_ENV || "development";
+
     // Auto-detect environment and choose appropriate provider
     // Priority: 1. Explicit EMAIL_PROVIDER env var, 2. Auto-detect based on NODE_ENV
     let emailProvider = process.env.EMAIL_PROVIDER;
-    
+
     if (!emailProvider) {
       // Auto-detect based on environment
-      if (environment === 'production') {
-        emailProvider = 'sendgrid';
+      if (environment === "production") {
+        emailProvider = "sendgrid";
       } else {
         // For development, test, or any non-production environment, use MailHog
-        emailProvider = 'mailhog';
+        emailProvider = "mailhog";
       }
-      logger.info(`Auto-detected email provider: ${emailProvider} (NODE_ENV: ${environment})`);
+      logger.info(
+        `Auto-detected email provider: ${emailProvider} (NODE_ENV: ${environment})`
+      );
     } else {
       logger.info(`Using explicit email provider: ${emailProvider}`);
     }
 
     switch (emailProvider.toLowerCase()) {
-      case 'sendgrid':
+      case "sendgrid":
         this.provider = new SendGridProvider();
-        logger.info('Email service initialized with SendGrid provider');
+        logger.info("Email service initialized with SendGrid provider");
         break;
-      case 'mailhog':
+      case "mailhog":
       default:
         this.provider = new MailHogProvider();
-        logger.info('Email service initialized with MailHog provider');
+        logger.info("Email service initialized with MailHog provider");
         break;
     }
   }
 
-  async sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  async sendEmail(
+    options: EmailOptions
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     if (!isServer || !this.provider) {
       return {
         success: false,
-        error: 'Email service can only be used on the server side',
+        error: "Email service can only be used on the server side",
       };
     }
     return this.provider.sendEmail(options);
@@ -225,13 +252,15 @@ class EmailService {
 
     logger.info(`Attempting to send invitation email to ${to}`);
     const result = await this.sendEmail({ to, subject, html, text });
-    
+
     if (result.success) {
-      logger.info(`Invitation email sent successfully to ${to}`, { messageId: result.messageId });
+      logger.info(`Invitation email sent successfully to ${to}`, {
+        messageId: result.messageId,
+      });
     } else {
       logger.error(`Failed to send invitation email to ${to}: ${result.error}`);
     }
-    
+
     return result;
   }
 
@@ -241,16 +270,16 @@ class EmailService {
     projectName,
     organizationName,
     projectUrl,
-    type = 'created',
+    type = "created",
   }: {
     to: string | string[];
     creatorName: string;
     projectName: string;
     organizationName: string;
     projectUrl: string;
-    type?: 'created' | 'updated';
+    type?: "created" | "updated";
   }) {
-    const action = type === 'created' ? 'created' : 'updated';
+    const action = type === "created" ? "created" : "updated";
     const subject = `New project ${action}: ${projectName}`;
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -289,7 +318,9 @@ class EmailService {
     assigneeName?: string;
   }) {
     const subject = `New task assigned: ${taskTitle}`;
-    const assignmentText = assigneeName ? ` and assigned to ${assigneeName}` : '';
+    const assignmentText = assigneeName
+      ? ` and assigned to ${assigneeName}`
+      : "";
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #333;">New Task Created</h2>

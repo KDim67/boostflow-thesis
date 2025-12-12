@@ -1,11 +1,17 @@
-import { User } from 'firebase/auth';
-import { createDocument, getDocument, updateDocument, getAllDocuments, deleteDocument } from './firestoreService';
-import { createLogger } from '../utils/logger';
-import { PlatformRole } from './usePlatformAuth';
+import { User } from "firebase/auth";
+import {
+  createDocument,
+  getDocument,
+  updateDocument,
+  getAllDocuments,
+  deleteDocument,
+} from "./firestoreService";
+import { createLogger } from "../utils/logger";
+import { PlatformRole } from "./usePlatformAuth";
 
-const USER_COLLECTION = 'users';
+const USER_COLLECTION = "users";
 
-const logger = createLogger('UserProfileService');
+const logger = createLogger("UserProfileService");
 
 /**
  * Complete user profile data structure stored in Firestore
@@ -35,7 +41,7 @@ export interface UserProfile {
  * User preferences and application settings
  */
 export interface UserSettings {
-  theme?: 'light' | 'dark' | 'system';
+  theme?: "light" | "dark" | "system";
   notifications?: {
     email?: boolean; // Email notification preference
     website?: boolean; // In-app notification preference
@@ -57,11 +63,11 @@ export const createUserProfile = async (
     // Build user profile from Firebase Auth data with defaults
     const userProfile: UserProfile = {
       uid: user.uid,
-      email: user.email || '',
-      displayName: user.displayName || '',
-      photoURL: user.photoURL || '',
-      platformRole: 'user', // Default role for new users
-      ...additionalData
+      email: user.email || "",
+      displayName: user.displayName || "",
+      photoURL: user.photoURL || "",
+      platformRole: "user", // Default role for new users
+      ...additionalData,
     };
 
     // Remove undefined values to avoid storing them in Firestore
@@ -72,7 +78,9 @@ export const createUserProfile = async (
     await createDocument(USER_COLLECTION, cleanProfile, user.uid);
     logger.info(`User profile created for user: ${user.uid}`);
   } catch (error) {
-    logger.error('Error creating user profile', error as Error, { uid: user.uid });
+    logger.error("Error creating user profile", error as Error, {
+      uid: user.uid,
+    });
     throw error;
   }
 };
@@ -83,13 +91,15 @@ export const createUserProfile = async (
  * @returns UserProfile object or null if not found
  * @throws Error if retrieval fails
  */
-export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
+export const getUserProfile = async (
+  uid: string
+): Promise<UserProfile | null> => {
   try {
     const userProfile = await getDocument(USER_COLLECTION, uid);
     logger.debug(`User profile retrieved for user: ${uid}`);
     return userProfile as UserProfile | null;
   } catch (error) {
-    logger.error('Error getting user profile', error as Error, { uid });
+    logger.error("Error getting user profile", error as Error, { uid });
     throw error;
   }
 };
@@ -108,7 +118,7 @@ export const updateUserProfile = async (
     await updateDocument(USER_COLLECTION, uid, data);
     logger.info(`User profile updated for user: ${uid}`);
   } catch (error) {
-    logger.error('Error updating user profile', error as Error, { uid });
+    logger.error("Error updating user profile", error as Error, { uid });
     throw error;
   }
 };
@@ -127,29 +137,31 @@ export const syncUserProfile = async (
 ): Promise<void> => {
   try {
     const existingProfile = await getUserProfile(user.uid);
-    
+
     if (existingProfile) {
       // Update existing profile with fresh Auth data, preserving existing values
       const updates: Partial<UserProfile> = {
         email: user.email || existingProfile.email,
         displayName: user.displayName || existingProfile.displayName,
-        photoURL: user.photoURL || existingProfile.photoURL || '',
-        platformRole: existingProfile.platformRole || 'user', // Preserve existing role
-        ...additionalData
+        photoURL: user.photoURL || existingProfile.photoURL || "",
+        platformRole: existingProfile.platformRole || "user", // Preserve existing role
+        ...additionalData,
       };
-      
+
       // Remove undefined values before updating
       const cleanUpdates = Object.fromEntries(
         Object.entries(updates).filter(([_, value]) => value !== undefined)
       ) as Partial<UserProfile>;
-      
+
       await updateUserProfile(user.uid, cleanUpdates);
     } else {
       // Create new profile if none exists
       await createUserProfile(user, additionalData);
     }
   } catch (error) {
-    logger.error('Error syncing user profile', error as Error, { uid: user.uid });
+    logger.error("Error syncing user profile", error as Error, {
+      uid: user.uid,
+    });
     throw error;
   }
 };
@@ -165,7 +177,7 @@ export const getAllUserProfiles = async (): Promise<UserProfile[]> => {
     logger.debug(`Retrieved ${userProfiles.length} user profiles`);
     return userProfiles as UserProfile[];
   } catch (error) {
-    logger.error('Error getting all user profiles', error as Error);
+    logger.error("Error getting all user profiles", error as Error);
     throw error;
   }
 };
@@ -176,14 +188,18 @@ export const getAllUserProfiles = async (): Promise<UserProfile[]> => {
  * @returns UserProfile object or null if not found
  * @throws Error if search fails
  */
-export const getUserByEmail = async (email: string): Promise<UserProfile | null> => {
+export const getUserByEmail = async (
+  email: string
+): Promise<UserProfile | null> => {
   try {
     const userProfiles = await getAllUserProfiles();
     // Case-insensitive email comparison
-    const user = userProfiles.find(profile => profile.email.toLowerCase() === email.toLowerCase());
+    const user = userProfiles.find(
+      (profile) => profile.email.toLowerCase() === email.toLowerCase()
+    );
     return user || null;
   } catch (error) {
-    logger.error('Error getting user by email', error as Error, { email });
+    logger.error("Error getting user by email", error as Error, { email });
     throw error;
   }
 };
@@ -198,7 +214,7 @@ export const deleteUserProfile = async (uid: string): Promise<void> => {
     await deleteDocument(USER_COLLECTION, uid);
     logger.info(`User profile deleted for user: ${uid}`);
   } catch (error) {
-    logger.error('Error deleting user profile', error as Error, { uid });
+    logger.error("Error deleting user profile", error as Error, { uid });
     throw error;
   }
 };

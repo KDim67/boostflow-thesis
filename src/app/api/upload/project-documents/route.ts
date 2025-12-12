@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { uploadFile, BUCKETS, generateFileName, initializeBuckets } from '@/lib/minio/client';
-import { getAuth } from 'firebase-admin/auth';
-import { adminApp } from '@/lib/firebase/admin';
-import { addDocument } from '@/lib/firebase/firestoreService';
-import { hasOrganizationPermission } from '@/lib/firebase/organizationService';
+import { NextRequest, NextResponse } from "next/server";
+import {
+  uploadFile,
+  BUCKETS,
+  generateFileName,
+  initializeBuckets,
+} from "@/lib/minio/client";
+import { getAuth } from "firebase-admin/auth";
+import { adminApp } from "@/lib/firebase/admin";
+import { addDocument } from "@/lib/firebase/firestoreService";
+import { hasOrganizationPermission } from "@/lib/firebase/organizationService";
 
 const auth = getAuth(adminApp);
 
@@ -11,7 +16,7 @@ const auth = getAuth(adminApp);
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '5mb',
+      sizeLimit: "5mb",
     },
   },
 };
@@ -22,41 +27,54 @@ export async function POST(request: NextRequest) {
     await initializeBuckets();
 
     // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const token = authHeader.split('Bearer ')[1];
+    const token = authHeader.split("Bearer ")[1];
     const decodedToken = await auth.verifyIdToken(token);
     const userId = decodedToken.uid;
 
     // Parse the form data
     const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const projectId = formData.get('projectId') as string;
-    const organizationId = formData.get('organizationId') as string;
-    const folder = formData.get('folder') as string || 'General';
+    const file = formData.get("file") as File;
+    const projectId = formData.get("projectId") as string;
+    const organizationId = formData.get("organizationId") as string;
+    const folder = (formData.get("folder") as string) || "General";
 
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     if (!projectId || !organizationId) {
-      return NextResponse.json({ error: 'Project ID and Organization ID are required' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Project ID and Organization ID are required" },
+        { status: 400 }
+      );
     }
 
     // Check if user has permission to upload files to this organization
-    const hasPermission = await hasOrganizationPermission(userId, organizationId, 'member');
+    const hasPermission = await hasOrganizationPermission(
+      userId,
+      organizationId,
+      "member"
+    );
     if (!hasPermission) {
-      return NextResponse.json({ error: 'Insufficient permissions to upload files to this organization' }, { status: 403 });
+      return NextResponse.json(
+        {
+          error:
+            "Insufficient permissions to upload files to this organization",
+        },
+        { status: 403 }
+      );
     }
 
     // Validate file size (5MB limit for documents)
     const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'File too large. Maximum size is 5MB.' },
+        { error: "File too large. Maximum size is 5MB." },
         { status: 400 }
       );
     }
@@ -77,36 +95,36 @@ export async function POST(request: NextRequest) {
     );
 
     // Get file extension and type
-    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    const extension = file.name.split(".").pop()?.toLowerCase() || "";
     const getFileType = (ext: string) => {
       const types: { [key: string]: string } = {
-        pdf: 'PDF',
-        doc: 'Word',
-        docx: 'Word',
-        xls: 'Excel',
-        xlsx: 'Excel',
-        ppt: 'PowerPoint',
-        pptx: 'PowerPoint',
-        txt: 'Text',
-        jpg: 'Image',
-        jpeg: 'Image',
-        png: 'Image',
-        gif: 'Image',
-        svg: 'Image',
-        zip: 'Archive',
-        rar: 'Archive',
-        '7z': 'Archive',
+        pdf: "PDF",
+        doc: "Word",
+        docx: "Word",
+        xls: "Excel",
+        xlsx: "Excel",
+        ppt: "PowerPoint",
+        pptx: "PowerPoint",
+        txt: "Text",
+        jpg: "Image",
+        jpeg: "Image",
+        png: "Image",
+        gif: "Image",
+        svg: "Image",
+        zip: "Archive",
+        rar: "Archive",
+        "7z": "Archive",
       };
-      return types[ext] || 'Document';
+      return types[ext] || "Document";
     };
 
     // Format file size
     const formatFileSize = (bytes: number): string => {
-      if (bytes === 0) return '0 Bytes';
+      if (bytes === 0) return "0 Bytes";
       const k = 1024;
-      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const sizes = ["Bytes", "KB", "MB", "GB"];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
     };
 
     // Save document metadata to Firestore
@@ -125,19 +143,19 @@ export async function POST(request: NextRequest) {
       contentType: file.type,
     };
 
-    const documentId = await addDocument('project-documents', documentData);
+    const documentId = await addDocument("project-documents", documentData);
 
     return NextResponse.json({
       success: true,
       documentId,
       url: fileUrl,
       document: { id: documentId, ...documentData },
-      message: 'Document uploaded successfully',
+      message: "Document uploaded successfully",
     });
   } catch (error) {
-    console.error('Error uploading project document:', error);
+    console.error("Error uploading project document:", error);
     return NextResponse.json(
-      { error: 'Failed to upload document' },
+      { error: "Failed to upload document" },
       { status: 500 }
     );
   }

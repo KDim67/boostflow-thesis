@@ -1,14 +1,25 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '@/lib/firebase/useAuth';
-import { sendVerificationEmail } from '@/lib/firebase/authService';
-import { getUserProfile, updateUserProfile, UserProfile } from '@/lib/firebase/userProfileService';
-import { updatePassword, updateProfile, updateEmail, verifyBeforeUpdateEmail, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { useRouter } from 'next/navigation';
-import PersonalIntegrations from '@/components/dashboard/PersonalIntegrations';
-import { useFileUpload } from '@/lib/hooks/useFileUpload';
-import ImageCropper, { getCroppedImg } from '@/components/ui/ImageCropper';
+import { useState, useEffect, useRef } from "react";
+import { useAuth } from "@/lib/firebase/useAuth";
+import { sendVerificationEmail } from "@/lib/firebase/authService";
+import {
+  getUserProfile,
+  updateUserProfile,
+  UserProfile,
+} from "@/lib/firebase/userProfileService";
+import {
+  updatePassword,
+  updateProfile,
+  updateEmail,
+  verifyBeforeUpdateEmail,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+} from "firebase/auth";
+import { useRouter } from "next/navigation";
+import PersonalIntegrations from "@/components/dashboard/PersonalIntegrations";
+import { useFileUpload } from "@/lib/hooks/useFileUpload";
+import ImageCropper, { getCroppedImg } from "@/components/ui/ImageCropper";
 
 /**
  * Interface defining the structure of form data for user settings
@@ -35,39 +46,42 @@ export default function SettingsPage() {
   // Authentication state and navigation
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  
+
   // UI state management
-  const [activeTab, setActiveTab] = useState('account'); // Currently active settings tab
+  const [activeTab, setActiveTab] = useState("account"); // Currently active settings tab
   const [loading, setLoading] = useState(true); // Initial page loading state
   const [saving, setSaving] = useState(false); // General saving state for forms
-  
+
   // User data state
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  
+
   // File upload functionality
   const fileInputRef = useRef<HTMLInputElement>(null); // Reference to hidden file input
   const { uploading, uploadProfilePicture } = useFileUpload();
-  
+
   // Form data state
   const [formData, setFormData] = useState<SettingsFormData>({
-    displayName: '',
-    email: '',
-    firstName: '',
-    lastName: '',
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
-    newEmail: '',
+    displayName: "",
+    email: "",
+    firstName: "",
+    lastName: "",
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+    newEmail: "",
     websiteNotifications: true,
-    profilePicture: ''
+    profilePicture: "",
   });
-  
+
   // UI feedback and loading states
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
   const [sendingVerification, setSendingVerification] = useState(false);
   const [changingEmail, setChangingEmail] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
-  
+
   // Image cropping functionality
   const [showImageCropper, setShowImageCropper] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null); // Temporary image URL for cropping
@@ -79,7 +93,7 @@ export default function SettingsPage() {
   useEffect(() => {
     // Redirect to login if authentication is complete but no user found
     if (!authLoading && !user) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
 
@@ -98,19 +112,20 @@ export default function SettingsPage() {
         if (profile) {
           setUserProfile(profile);
           // Populate form with existing profile data, using fallbacks for missing fields
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
-            displayName: profile.displayName || '',
-            email: profile.email || '',
-            firstName: profile.firstName || '',
-            lastName: profile.lastName || '',
-            profilePicture: profile.profilePicture || '',
-            websiteNotifications: profile.settings?.notifications?.website ?? true,
+            displayName: profile.displayName || "",
+            email: profile.email || "",
+            firstName: profile.firstName || "",
+            lastName: profile.lastName || "",
+            profilePicture: profile.profilePicture || "",
+            websiteNotifications:
+              profile.settings?.notifications?.website ?? true,
           }));
         }
       } catch (error) {
-        console.error('Error fetching user profile:', error);
-        setMessage({ type: 'error', text: 'Failed to load user profile' });
+        console.error("Error fetching user profile:", error);
+        setMessage({ type: "error", text: "Failed to load user profile" });
       } finally {
         setLoading(false);
       }
@@ -124,15 +139,20 @@ export default function SettingsPage() {
    * @param field - The form field to update
    * @param value - The new value (string or boolean)
    */
-  const handleInputChange = (field: keyof SettingsFormData, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleInputChange = (
+    field: keyof SettingsFormData,
+    value: string | boolean
+  ) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   /**
    * Handles profile picture file selection and initiates the cropping process
    * Creates a temporary object URL for the image cropper component
    */
-  const handleProfilePictureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProfilePictureUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -143,7 +163,7 @@ export default function SettingsPage() {
 
     // Reset file input to allow selecting the same file again if needed
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 
@@ -157,9 +177,12 @@ export default function SettingsPage() {
       if (!selectedImage) return;
 
       // Convert the cropped area to a blob for upload
-      const croppedImageBlob = await getCroppedImg(selectedImage, croppedAreaPixels);
-      const croppedFile = new File([croppedImageBlob], 'profile-picture.jpg', {
-        type: 'image/jpeg',
+      const croppedImageBlob = await getCroppedImg(
+        selectedImage,
+        croppedAreaPixels
+      );
+      const croppedFile = new File([croppedImageBlob], "profile-picture.jpg", {
+        type: "image/jpeg",
         lastModified: Date.now(),
       });
 
@@ -167,7 +190,7 @@ export default function SettingsPage() {
       const result = await uploadProfilePicture(croppedFile, {
         onSuccess: async (result) => {
           // Update local form state with new image URL
-          setFormData(prev => ({ ...prev, profilePicture: result.url }));
+          setFormData((prev) => ({ ...prev, profilePicture: result.url }));
 
           // Update the user profile in the database
           if (user) {
@@ -177,19 +200,30 @@ export default function SettingsPage() {
               });
 
               // Trigger navbar refresh by dispatching a custom event
-              window.dispatchEvent(new CustomEvent('profilePictureUpdated', {
-                detail: { profilePicture: result.url }
-              }));
+              window.dispatchEvent(
+                new CustomEvent("profilePictureUpdated", {
+                  detail: { profilePicture: result.url },
+                })
+              );
 
-              setMessage({ type: 'success', text: 'Profile picture updated successfully' });
+              setMessage({
+                type: "success",
+                text: "Profile picture updated successfully",
+              });
             } catch (error) {
-              console.error('Error updating profile picture in database:', error);
-              setMessage({ type: 'error', text: 'Failed to save profile picture' });
+              console.error(
+                "Error updating profile picture in database:",
+                error
+              );
+              setMessage({
+                type: "error",
+                text: "Failed to save profile picture",
+              });
             }
           }
         },
         onError: (error) => {
-          setMessage({ type: 'error', text: error });
+          setMessage({ type: "error", text: error });
         },
       });
 
@@ -198,8 +232,8 @@ export default function SettingsPage() {
       setSelectedImage(null);
       URL.revokeObjectURL(selectedImage); // Prevent memory leaks
     } catch (error) {
-      console.error('Crop error:', error);
-      setMessage({ type: 'error', text: 'Failed to process image' });
+      console.error("Crop error:", error);
+      setMessage({ type: "error", text: "Failed to process image" });
     }
   };
 
@@ -224,30 +258,32 @@ export default function SettingsPage() {
 
     try {
       // Optimistically update UI first
-      setFormData(prev => ({ ...prev, profilePicture: '' }));
+      setFormData((prev) => ({ ...prev, profilePicture: "" }));
 
       // Call API to remove profile picture and delete file from MinIO
       const token = await user.getIdToken();
-      const response = await fetch('/api/upload/profile-picture/remove', {
-        method: 'DELETE',
+      const response = await fetch("/api/upload/profile-picture/remove", {
+        method: "DELETE",
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to remove profile picture');
+        throw new Error("Failed to remove profile picture");
       }
 
       // Trigger navbar refresh by dispatching a custom event
-      window.dispatchEvent(new CustomEvent('profilePictureUpdated', {
-        detail: { profilePicture: '' }
-      }));
+      window.dispatchEvent(
+        new CustomEvent("profilePictureUpdated", {
+          detail: { profilePicture: "" },
+        })
+      );
 
-      setMessage({ type: 'success', text: 'Profile picture removed' });
+      setMessage({ type: "success", text: "Profile picture removed" });
     } catch (error) {
-      console.error('Error removing profile picture:', error);
-      setMessage({ type: 'error', text: 'Failed to remove profile picture' });
+      console.error("Error removing profile picture:", error);
+      setMessage({ type: "error", text: "Failed to remove profile picture" });
     }
   };
 
@@ -265,7 +301,7 @@ export default function SettingsPage() {
     try {
       // Update Firebase Auth profile with display name
       await updateProfile(user, {
-        displayName: formData.displayName
+        displayName: formData.displayName,
       });
 
       // Update custom user profile in database with additional fields
@@ -276,10 +312,16 @@ export default function SettingsPage() {
         profilePicture: formData.profilePicture,
       });
 
-      setMessage({ type: 'success', text: 'Account information updated successfully' });
+      setMessage({
+        type: "success",
+        text: "Account information updated successfully",
+      });
     } catch (error) {
-      console.error('Error updating account:', error);
-      setMessage({ type: 'error', text: 'Failed to update account information' });
+      console.error("Error updating account:", error);
+      setMessage({
+        type: "error",
+        text: "Failed to update account information",
+      });
     } finally {
       setSaving(false); // Fixed: should be setSaving, not setPasswordLoading
     }
@@ -295,13 +337,16 @@ export default function SettingsPage() {
 
     // Client-side validation: ensure passwords match
     if (formData.newPassword !== formData.confirmPassword) {
-      setMessage({ type: 'error', text: 'New passwords do not match' });
+      setMessage({ type: "error", text: "New passwords do not match" });
       return;
     }
 
     // Client-side validation: enforce minimum password length
     if (formData.newPassword.length < 6) {
-      setMessage({ type: 'error', text: 'Password must be at least 6 characters long' });
+      setMessage({
+        type: "error",
+        text: "Password must be at least 6 characters long",
+      });
       return;
     }
 
@@ -311,23 +356,26 @@ export default function SettingsPage() {
     try {
       // Update password in Firebase Auth
       await updatePassword(user, formData.newPassword);
-      
+
       // Clear password fields after successful update
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
       }));
-      
-      setMessage({ type: 'success', text: 'Password updated successfully' });
+
+      setMessage({ type: "success", text: "Password updated successfully" });
     } catch (error: any) {
-      console.error('Error updating password:', error);
+      console.error("Error updating password:", error);
       // Handle specific Firebase Auth errors with user-friendly messages
-      if (error.code === 'auth/requires-recent-login') {
-        setMessage({ type: 'error', text: 'Please log out and log back in before changing your password' });
+      if (error.code === "auth/requires-recent-login") {
+        setMessage({
+          type: "error",
+          text: "Please log out and log back in before changing your password",
+        });
       } else {
-        setMessage({ type: 'error', text: 'Failed to update password' });
+        setMessage({ type: "error", text: "Failed to update password" });
       }
     } finally {
       setPasswordLoading(false);
@@ -350,14 +398,20 @@ export default function SettingsPage() {
       await updateUserProfile(user.uid, {
         settings: {
           notifications: {
-            website: formData.websiteNotifications
-          }
-        }
+            website: formData.websiteNotifications,
+          },
+        },
       });
-      setMessage({ type: 'success', text: 'Notification preferences updated successfully' });
+      setMessage({
+        type: "success",
+        text: "Notification preferences updated successfully",
+      });
     } catch (error) {
-      console.error('Error updating notifications:', error);
-      setMessage({ type: 'error', text: 'Failed to update notification preferences' });
+      console.error("Error updating notifications:", error);
+      setMessage({
+        type: "error",
+        text: "Failed to update notification preferences",
+      });
     } finally {
       setSaving(false);
     }
@@ -375,10 +429,16 @@ export default function SettingsPage() {
 
     try {
       await sendVerificationEmail(user);
-      setMessage({ type: 'success', text: 'Verification email sent! Please check your inbox.' });
+      setMessage({
+        type: "success",
+        text: "Verification email sent! Please check your inbox.",
+      });
     } catch (error: any) {
-      console.error('Error sending verification email:', error);
-      setMessage({ type: 'error', text: 'Failed to send verification email. Please try again.' });
+      console.error("Error sending verification email:", error);
+      setMessage({
+        type: "error",
+        text: "Failed to send verification email. Please try again.",
+      });
     } finally {
       setSendingVerification(false);
     }
@@ -391,10 +451,10 @@ export default function SettingsPage() {
    */
   const handleEmailChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate required fields are present
     if (!user || !formData.newEmail || !formData.currentPassword) {
-      setMessage({ type: 'error', text: 'Please fill in all required fields' });
+      setMessage({ type: "error", text: "Please fill in all required fields" });
       return;
     }
 
@@ -403,58 +463,80 @@ export default function SettingsPage() {
 
     try {
       // Reauthenticate user before changing email
-      const credential = EmailAuthProvider.credential(user.email!, formData.currentPassword);
+      const credential = EmailAuthProvider.credential(
+        user.email!,
+        formData.currentPassword
+      );
       await reauthenticateWithCredential(user, credential);
 
       // Use verifyBeforeUpdateEmail to send verification email first
       const actionCodeSettings = {
-        url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://boostflow.me'}/auth-handler/auth/action`,
+        url: `${process.env.NEXT_PUBLIC_APP_URL || "https://boostflow.me"}/auth-handler/auth/action`,
         handleCodeInApp: true, // Handle verification in the app
       };
-      
-      await verifyBeforeUpdateEmail(user, formData.newEmail, actionCodeSettings);
+
+      await verifyBeforeUpdateEmail(
+        user,
+        formData.newEmail,
+        actionCodeSettings
+      );
 
       // Clear form fields after successful verification email send
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        newEmail: '',
-        currentPassword: ''
+        newEmail: "",
+        currentPassword: "",
       }));
 
-      setMessage({ 
-        type: 'success', 
-        text: `Verification email sent to ${formData.newEmail}! Please check your inbox and click the verification link to complete the email change. Your email will be updated automatically after verification.` 
+      setMessage({
+        type: "success",
+        text: `Verification email sent to ${formData.newEmail}! Please check your inbox and click the verification link to complete the email change. Your email will be updated automatically after verification.`,
       });
     } catch (error: any) {
-      console.error('Error updating email:', error);
-      
+      console.error("Error updating email:", error);
+
       // Handle specific Firebase Auth errors with user-friendly messages
-      if (error.code === 'auth/wrong-password') {
-        setMessage({ type: 'error', text: 'Current password is incorrect' });
-      } else if (error.code === 'auth/email-already-in-use') {
-        setMessage({ type: 'error', text: 'This email is already in use by another account' });
-      } else if (error.code === 'auth/invalid-email') {
-        setMessage({ type: 'error', text: 'Please enter a valid email address' });
-      } else if (error.code === 'auth/requires-recent-login') {
-        setMessage({ type: 'error', text: 'Please log out and log back in before changing your email' });
-      } else if (error.code === 'auth/too-many-requests') {
-        setMessage({ type: 'error', text: 'Too many failed attempts. Please try again later.' });
+      if (error.code === "auth/wrong-password") {
+        setMessage({ type: "error", text: "Current password is incorrect" });
+      } else if (error.code === "auth/email-already-in-use") {
+        setMessage({
+          type: "error",
+          text: "This email is already in use by another account",
+        });
+      } else if (error.code === "auth/invalid-email") {
+        setMessage({
+          type: "error",
+          text: "Please enter a valid email address",
+        });
+      } else if (error.code === "auth/requires-recent-login") {
+        setMessage({
+          type: "error",
+          text: "Please log out and log back in before changing your email",
+        });
+      } else if (error.code === "auth/too-many-requests") {
+        setMessage({
+          type: "error",
+          text: "Too many failed attempts. Please try again later.",
+        });
       } else {
-        setMessage({ type: 'error', text: `Failed to send verification email: ${error.message || 'Please try again.'}` });
+        setMessage({
+          type: "error",
+          text: `Failed to send verification email: ${error.message || "Please try again."}`,
+        });
       }
     } finally {
       setChangingEmail(false);
     }
   };
 
-
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading settings...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">
+            Loading settings...
+          </p>
         </div>
       </div>
     );
@@ -465,7 +547,9 @@ export default function SettingsPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            Settings
+          </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
             Manage your account preferences and security settings
           </p>
@@ -473,11 +557,13 @@ export default function SettingsPage() {
 
         {/* Message */}
         {message && (
-          <div className={`mb-6 p-4 rounded-md ${
-            message.type === 'success' 
-              ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-800'
-              : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800'
-          }`}>
+          <div
+            className={`mb-6 p-4 rounded-md ${
+              message.type === "success"
+                ? "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-800"
+                : "bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800"
+            }`}
+          >
             {message.text}
           </div>
         )}
@@ -487,18 +573,18 @@ export default function SettingsPage() {
           <div className="border-b border-gray-200 dark:border-gray-700">
             <nav className="-mb-px flex space-x-8 px-6">
               {[
-                { id: 'account', label: 'Account' },
-                { id: 'security', label: 'Security' },
-                { id: 'notifications', label: 'Notifications' },
-                { id: 'integrations', label: 'Integrations' }
+                { id: "account", label: "Account" },
+                { id: "security", label: "Security" },
+                { id: "notifications", label: "Notifications" },
+                { id: "integrations", label: "Integrations" },
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`py-4 px-1 border-b-2 font-medium text-sm ${
                     activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+                      ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                      : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300"
                   }`}
                 >
                   {tab.label}
@@ -510,11 +596,9 @@ export default function SettingsPage() {
           {/* Tab Content */}
           <div className="p-6">
             {/* Account Tab */}
-            {activeTab === 'account' && (
+            {activeTab === "account" && (
               <form onSubmit={handleAccountSave} className="space-y-6">
                 <div>
-
-                  
                   {/* Profile Picture Section */}
                   <div className="flex flex-col items-center mb-8">
                     <div className="relative group">
@@ -527,11 +611,13 @@ export default function SettingsPage() {
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-white text-3xl font-bold">
-                            {user?.displayName ? user.displayName.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase() || 'U'}
+                            {user?.displayName
+                              ? user.displayName.charAt(0).toUpperCase()
+                              : user?.email?.charAt(0).toUpperCase() || "U"}
                           </div>
                         )}
                       </div>
-                      
+
                       {/* Hidden file input */}
                       <input
                         ref={fileInputRef}
@@ -540,18 +626,19 @@ export default function SettingsPage() {
                         onChange={handleProfilePictureUpload}
                         className="hidden"
                       />
-
                     </div>
-                    
+
                     <div className="mt-4 text-center">
                       <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        {formData.displayName || `${formData.firstName} ${formData.lastName}`.trim() || 'User'}
+                        {formData.displayName ||
+                          `${formData.firstName} ${formData.lastName}`.trim() ||
+                          "User"}
                       </h4>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                         {formData.email}
                       </p>
                     </div>
-                    
+
                     <div className="flex gap-3 mt-4">
                       <button
                         type="button"
@@ -559,26 +646,46 @@ export default function SettingsPage() {
                         disabled={uploading}
                         className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium rounded-lg transition-colors duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                       >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        <svg
+                          className="w-4 h-4 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
                         </svg>
-                        {uploading ? 'Uploading...' : 'Upload Photo'}
+                        {uploading ? "Uploading..." : "Upload Photo"}
                       </button>
-                      
+
                       <button
                         type="button"
                         onClick={handleRemoveProfilePicture}
                         disabled={!formData.profilePicture || uploading}
                         className="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium rounded-lg transition-colors duration-200 focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
                       >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        <svg
+                          className="w-4 h-4 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
                         </svg>
                         Remove
                       </button>
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -587,7 +694,9 @@ export default function SettingsPage() {
                       <input
                         type="text"
                         value={formData.firstName}
-                        onChange={(e) => handleInputChange('firstName', e.target.value)}
+                        onChange={(e) =>
+                          handleInputChange("firstName", e.target.value)
+                        }
                         className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
@@ -598,7 +707,9 @@ export default function SettingsPage() {
                       <input
                         type="text"
                         value={formData.lastName}
-                        onChange={(e) => handleInputChange('lastName', e.target.value)}
+                        onChange={(e) =>
+                          handleInputChange("lastName", e.target.value)
+                        }
                         className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
@@ -609,7 +720,9 @@ export default function SettingsPage() {
                       <input
                         type="text"
                         value={formData.displayName}
-                        onChange={(e) => handleInputChange('displayName', e.target.value)}
+                        onChange={(e) =>
+                          handleInputChange("displayName", e.target.value)
+                        }
                         className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
@@ -635,14 +748,14 @@ export default function SettingsPage() {
                     disabled={saving}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {saving ? 'Saving...' : 'Save Changes'}
+                    {saving ? "Saving..." : "Save Changes"}
                   </button>
                 </div>
               </form>
             )}
 
             {/* Security Tab */}
-            {activeTab === 'security' && (
+            {activeTab === "security" && (
               <div className="space-y-8">
                 {/* Email Verification Section */}
                 <div>
@@ -656,10 +769,15 @@ export default function SettingsPage() {
                           Current Email: {user?.email}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          Status: {user?.emailVerified ? (
-                            <span className="text-green-600 dark:text-green-400 font-medium">✓ Verified</span>
+                          Status:{" "}
+                          {user?.emailVerified ? (
+                            <span className="text-green-600 dark:text-green-400 font-medium">
+                              ✓ Verified
+                            </span>
                           ) : (
-                            <span className="text-red-600 dark:text-red-400 font-medium">⚠ Not Verified</span>
+                            <span className="text-red-600 dark:text-red-400 font-medium">
+                              ⚠ Not Verified
+                            </span>
                           )}
                         </p>
                       </div>
@@ -670,14 +788,18 @@ export default function SettingsPage() {
                           disabled={sendingVerification}
                           className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {sendingVerification ? 'Sending...' : 'Send Verification Email'}
+                          {sendingVerification
+                            ? "Sending..."
+                            : "Send Verification Email"}
                         </button>
                       )}
                     </div>
                     {!user?.emailVerified && (
                       <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
                         <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                          <strong>Important:</strong> Please verify your email address to ensure account security and receive important notifications.
+                          <strong>Important:</strong> Please verify your email
+                          address to ensure account security and receive
+                          important notifications.
                         </p>
                       </div>
                     )}
@@ -698,7 +820,9 @@ export default function SettingsPage() {
                         <input
                           type="email"
                           value={formData.newEmail}
-                          onChange={(e) => handleInputChange('newEmail', e.target.value)}
+                          onChange={(e) =>
+                            handleInputChange("newEmail", e.target.value)
+                          }
                           className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                           placeholder="Enter new email address"
                         />
@@ -710,7 +834,9 @@ export default function SettingsPage() {
                         <input
                           type="password"
                           value={formData.currentPassword}
-                          onChange={(e) => handleInputChange('currentPassword', e.target.value)}
+                          onChange={(e) =>
+                            handleInputChange("currentPassword", e.target.value)
+                          }
                           className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                           placeholder="Enter current password to confirm"
                         />
@@ -718,17 +844,23 @@ export default function SettingsPage() {
                     </div>
                     <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
                       <p className="text-sm text-blue-800 dark:text-blue-200">
-                        <strong>Note:</strong> After changing your email, you'll need to verify the new address before you can use it to sign in.
+                        <strong>Note:</strong> After changing your email, you'll
+                        need to verify the new address before you can use it to
+                        sign in.
                       </p>
                     </div>
                   </div>
                   <div className="flex justify-end">
                     <button
                       type="submit"
-                      disabled={changingEmail || !formData.newEmail || !formData.currentPassword}
+                      disabled={
+                        changingEmail ||
+                        !formData.newEmail ||
+                        !formData.currentPassword
+                      }
                       className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {changingEmail ? 'Updating...' : 'Update Email'}
+                      {changingEmail ? "Updating..." : "Update Email"}
                     </button>
                   </div>
                 </form>
@@ -747,7 +879,9 @@ export default function SettingsPage() {
                         <input
                           type="password"
                           value={formData.newPassword}
-                          onChange={(e) => handleInputChange('newPassword', e.target.value)}
+                          onChange={(e) =>
+                            handleInputChange("newPassword", e.target.value)
+                          }
                           className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                           placeholder="Enter new password"
                         />
@@ -759,7 +893,9 @@ export default function SettingsPage() {
                         <input
                           type="password"
                           value={formData.confirmPassword}
-                          onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                          onChange={(e) =>
+                            handleInputChange("confirmPassword", e.target.value)
+                          }
                           className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                           placeholder="Confirm new password"
                         />
@@ -767,17 +903,23 @@ export default function SettingsPage() {
                     </div>
                     <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
                       <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                        <strong>Note:</strong> If you haven't logged in recently, you may need to log out and log back in before changing your password.
+                        <strong>Note:</strong> If you haven't logged in
+                        recently, you may need to log out and log back in before
+                        changing your password.
                       </p>
                     </div>
                   </div>
                   <div className="flex justify-end">
                     <button
                       type="submit"
-                      disabled={passwordLoading || !formData.newPassword || !formData.confirmPassword}
+                      disabled={
+                        passwordLoading ||
+                        !formData.newPassword ||
+                        !formData.confirmPassword
+                      }
                       className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {passwordLoading ? 'Updating...' : 'Update Password'}
+                      {passwordLoading ? "Updating..." : "Update Password"}
                     </button>
                   </div>
                 </form>
@@ -785,7 +927,7 @@ export default function SettingsPage() {
             )}
 
             {/* Notifications Tab */}
-            {activeTab === 'notifications' && (
+            {activeTab === "notifications" && (
               <form onSubmit={handleNotificationsSave} className="space-y-6">
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
@@ -805,7 +947,12 @@ export default function SettingsPage() {
                         <input
                           type="checkbox"
                           checked={formData.websiteNotifications}
-                          onChange={(e) => handleInputChange('websiteNotifications', e.target.checked)}
+                          onChange={(e) =>
+                            handleInputChange(
+                              "websiteNotifications",
+                              e.target.checked
+                            )
+                          }
                           className="sr-only peer"
                         />
                         <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
@@ -819,19 +966,18 @@ export default function SettingsPage() {
                     disabled={saving}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {saving ? 'Saving...' : 'Save Preferences'}
+                    {saving ? "Saving..." : "Save Preferences"}
                   </button>
                 </div>
               </form>
             )}
 
             {/* Integrations Tab */}
-            {activeTab === 'integrations' && (
+            {activeTab === "integrations" && (
               <div>
-                <PersonalIntegrations currentUser={user?.uid || ''} />
+                <PersonalIntegrations currentUser={user?.uid || ""} />
               </div>
             )}
-
           </div>
         </div>
       </div>

@@ -1,7 +1,13 @@
-'use client';
+"use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, UserCredential } from 'firebase/auth';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
+import { User, UserCredential } from "firebase/auth";
 import {
   registerUser,
   loginUser,
@@ -10,9 +16,9 @@ import {
   getCurrentUser,
   subscribeToAuthChanges,
   signInWithGoogle,
-  sendVerificationEmail
-} from './authService';
-import { syncUserProfile } from './userProfileService';
+  sendVerificationEmail,
+} from "./authService";
+import { syncUserProfile } from "./userProfileService";
 
 /**
  * Authentication context type definition
@@ -23,7 +29,11 @@ interface AuthContextType {
   user: User | null; // Current authenticated user or null if not logged in
   loading: boolean; // Indicates if an auth operation is in progress
   error: string | null; // Current error message or null if no error
-  signup: (email: string, password: string, displayName?: string) => Promise<UserCredential>;
+  signup: (
+    email: string,
+    password: string,
+    displayName?: string
+  ) => Promise<UserCredential>;
   login: (email: string, password: string) => Promise<UserCredential>;
   loginWithGoogle: () => Promise<UserCredential>;
   logout: () => Promise<void>;
@@ -63,20 +73,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * User registration function
    * Creates a new user account and syncs their profile data
    */
-  const signup = async (email: string, password: string, displayName?: string) => {
+  const signup = async (
+    email: string,
+    password: string,
+    displayName?: string
+  ) => {
     try {
       setLoading(true);
       setError(null);
       const userCredential = await registerUser(email, password, displayName);
-      
+
       // Sync user profile data after successful registration
       if (userCredential.user) {
         await syncUserProfile(userCredential.user);
       }
-      
+
       return userCredential;
     } catch (err: any) {
-      setError(err.message || 'Failed to create an account');
+      setError(err.message || "Failed to create an account");
       throw err; // Re-throw to allow component-level error handling
     } finally {
       setLoading(false); // Always reset loading state
@@ -92,15 +106,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setError(null);
       const userCredential = await loginUser(email, password);
-      
+
       // Sync user profile data after successful login
       if (userCredential.user) {
         await syncUserProfile(userCredential.user);
       }
-      
+
       return userCredential;
     } catch (err: any) {
-      setError(err.message || 'Failed to log in');
+      setError(err.message || "Failed to log in");
       throw err; // Re-throw to allow component-level error handling
     } finally {
       setLoading(false); // Always reset loading state
@@ -117,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(null);
       await logoutUser();
     } catch (err: any) {
-      setError(err.message || 'Failed to log out');
+      setError(err.message || "Failed to log out");
       throw err; // Re-throw to allow component-level error handling
     } finally {
       setLoading(false); // Always reset loading state
@@ -133,15 +147,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setError(null);
       const userCredential = await signInWithGoogle();
-      
+
       // Sync user profile data after successful Google login
       if (userCredential.user) {
         await syncUserProfile(userCredential.user);
       }
-      
+
       return userCredential;
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in with Google');
+      setError(err.message || "Failed to sign in with Google");
       throw err; // Re-throw to allow component-level error handling
     } finally {
       setLoading(false); // Always reset loading state
@@ -158,7 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(null);
       await resetPassword(email);
     } catch (err: any) {
-      setError(err.message || 'Failed to send password reset email');
+      setError(err.message || "Failed to send password reset email");
       throw err; // Re-throw to allow component-level error handling
     } finally {
       setLoading(false); // Always reset loading state
@@ -175,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(null);
       await sendVerificationEmail(user);
     } catch (err: any) {
-      setError(err.message || 'Failed to send verification email');
+      setError(err.message || "Failed to send verification email");
       throw err; // Re-throw to allow component-level error handling
     }
   };
@@ -199,7 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
     forgotPassword,
     sendEmailVerification: sendEmailVerificationWrapper,
-    clearError
+    clearError,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -213,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }

@@ -26,18 +26,16 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
-  serverExternalPackages: ['firebase-admin', 'minio'],
-  experimental: {
-  },
+  serverExternalPackages: ["firebase-admin", "minio"],
+  experimental: {},
   transpilePackages: [
-    'google-gax',
-    'protobufjs',
-    '@protobufjs/codegen',
-    '@protobufjs/inquire',
-    'lodash.clonedeep',
-    'jwks-rsa'
+    "google-gax",
+    "protobufjs",
+    "@protobufjs/codegen",
+    "@protobufjs/inquire",
+    "lodash.clonedeep",
+    "jwks-rsa",
   ],
-
 };
 
 export default nextConfig;

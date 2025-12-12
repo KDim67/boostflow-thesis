@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useRef } from 'react';
-import Cropper from 'react-easy-crop';
-import { Button } from '@/components/ui/button';
-import { X, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { useState, useCallback, useRef } from "react";
+import Cropper from "react-easy-crop";
+import { Button } from "@/components/ui/button";
+import { X, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 
 // Represents a rectangular area with position and dimensions
 interface Area {
@@ -19,7 +19,7 @@ interface ImageCropperProps {
   onCropComplete: (croppedAreaPixels: Area) => void; // Callback when cropping is finished
   onCancel: () => void; // Callback when user cancels cropping
   aspectRatio?: number; // Desired aspect ratio (width/height), defaults to 1 (square)
-  cropShape?: 'rect' | 'round'; // Shape of the crop area
+  cropShape?: "rect" | "round"; // Shape of the crop area
   title?: string; // Modal title text
 }
 
@@ -31,10 +31,10 @@ interface ImageCropperProps {
 const createImage = (url: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
     const image = new Image();
-    image.addEventListener('load', () => resolve(image));
-    image.addEventListener('error', (error) => reject(error));
+    image.addEventListener("load", () => resolve(image));
+    image.addEventListener("error", (error) => reject(error));
     // Enable cross-origin requests for external images
-    image.setAttribute('crossOrigin', 'anonymous');
+    image.setAttribute("crossOrigin", "anonymous");
     image.src = url;
   });
 
@@ -51,11 +51,11 @@ const getCroppedImg = async (
   rotation = 0
 ): Promise<Blob> => {
   const image = await createImage(imageSrc);
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
 
   if (!ctx) {
-    throw new Error('No 2d context');
+    throw new Error("No 2d context");
   }
 
   // Calculate safe area to accommodate rotation without clipping
@@ -94,11 +94,15 @@ const getCroppedImg = async (
 
   // Convert canvas to blob with JPEG compression (95% quality)
   return new Promise((resolve) => {
-    canvas.toBlob((blob) => {
-      if (blob) {
-        resolve(blob);
-      }
-    }, 'image/jpeg', 0.95);
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        }
+      },
+      "image/jpeg",
+      0.95
+    );
   });
 };
 
@@ -111,8 +115,8 @@ export default function ImageCropper({
   onCropComplete,
   onCancel,
   aspectRatio = 1, // Default to square crop
-  cropShape = 'round', // Default to circular crop
-  title = 'Crop Image'
+  cropShape = "round", // Default to circular crop
+  title = "Crop Image",
 }: ImageCropperProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -121,44 +125,46 @@ export default function ImageCropper({
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Callback fired when crop area changes - stores pixel coordinates for final processing
-  const handleCropComplete = useCallback((croppedArea: Area, croppedAreaPixels: Area) => {
-    setCroppedAreaPixels(croppedAreaPixels);
-  }, []);
+  const handleCropComplete = useCallback(
+    (croppedArea: Area, croppedAreaPixels: Area) => {
+      setCroppedAreaPixels(croppedAreaPixels);
+    },
+    []
+  );
 
   // Processes the final crop and calls parent callback
   const handleSave = async () => {
     if (!croppedAreaPixels) return;
-    
+
     setIsProcessing(true);
     try {
       // Generate the cropped image blob (not used here but validates the crop)
-      const croppedImage = await getCroppedImg(image, croppedAreaPixels, rotation);
+      const croppedImage = await getCroppedImg(
+        image,
+        croppedAreaPixels,
+        rotation
+      );
       // Pass crop coordinates back to parent component
       onCropComplete(croppedAreaPixels);
     } catch (error) {
-      console.error('Error cropping image:', error);
+      console.error("Error cropping image:", error);
     } finally {
       setIsProcessing(false);
     }
   };
 
   // Zoom controls with bounds (100% to 300%)
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.1, 3));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.1, 1));
+  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.1, 3));
+  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.1, 1));
   // Rotate in 90-degree increments, wrapping at 360
-  const handleRotate = () => setRotation(prev => (prev + 90) % 360);
+  const handleRotate = () => setRotation((prev) => (prev + 90) % 360);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-2xl mx-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">{title}</h3>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onCancel}
-            className="p-2"
-          >
+          <Button variant="ghost" size="sm" onClick={onCancel} className="p-2">
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -202,29 +208,21 @@ export default function ImageCropper({
             </Button>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRotate}
-          >
+          <Button variant="outline" size="sm" onClick={handleRotate}>
             <RotateCw className="h-4 w-4 mr-2" />
             Rotate
           </Button>
         </div>
 
         <div className="flex justify-end space-x-3">
-          <Button
-            variant="outline"
-            onClick={onCancel}
-            disabled={isProcessing}
-          >
+          <Button variant="outline" onClick={onCancel} disabled={isProcessing}>
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={!croppedAreaPixels || isProcessing}
           >
-            {isProcessing ? 'Processing...' : 'Save'}
+            {isProcessing ? "Processing..." : "Save"}
           </Button>
         </div>
       </div>

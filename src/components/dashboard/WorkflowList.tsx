@@ -1,10 +1,15 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Workflow, getWorkflowsByProject, deleteWorkflow, executeWorkflow } from '@/lib/services/automation/workflowService';
-import { getUserProfile, UserProfile } from '@/lib/firebase/userProfileService';
-import { Play, Edit, Trash2, Plus, Clock, User, Calendar } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Workflow,
+  getWorkflowsByProject,
+  deleteWorkflow,
+  executeWorkflow,
+} from "@/lib/services/automation/workflowService";
+import { getUserProfile, UserProfile } from "@/lib/firebase/userProfileService";
+import { Play, Edit, Trash2, Plus, Clock, User, Calendar } from "lucide-react";
 
 /**
  * Props interface for the WorkflowList component
@@ -26,17 +31,21 @@ export default function WorkflowList({
   projectId,
   organizationId,
   currentUser,
-  onCreateWorkflow
+  onCreateWorkflow,
 }: WorkflowListProps) {
   // Core workflow data and UI state
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Track individual workflow operations to show loading states
-  const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
-  const [executingWorkflowId, setExecutingWorkflowId] = useState<string | null>(null);
-  
+  const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(
+    null
+  );
+  const [executingWorkflowId, setExecutingWorkflowId] = useState<string | null>(
+    null
+  );
+
   // Cache user display names to avoid repeated API calls
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const router = useRouter();
@@ -56,11 +65,13 @@ export default function WorkflowList({
       setError(null);
       const projectWorkflows = await getWorkflowsByProject(projectId);
       setWorkflows(projectWorkflows);
-      
+
       // Extract unique user IDs to minimize API calls
-      const uniqueUserIds = [...new Set(projectWorkflows.map(w => w.createdBy))];
+      const uniqueUserIds = [
+        ...new Set(projectWorkflows.map((w) => w.createdBy)),
+      ];
       const userNameMap: Record<string, string> = {};
-      
+
       // Fetch all user profiles in parallel for better performance
       await Promise.all(
         uniqueUserIds.map(async (userId) => {
@@ -68,16 +79,21 @@ export default function WorkflowList({
             const userProfile = await getUserProfile(userId);
             if (userProfile) {
               let displayName = userProfile.displayName;
-              
+
               // Fallback hierarchy: displayName -> firstName lastName -> firstName -> lastName -> email -> userId
-              if (!displayName && userProfile.firstName && userProfile.lastName) {
-                displayName = `${userProfile.firstName} ${userProfile.lastName}`.trim();
+              if (
+                !displayName &&
+                userProfile.firstName &&
+                userProfile.lastName
+              ) {
+                displayName =
+                  `${userProfile.firstName} ${userProfile.lastName}`.trim();
               } else if (!displayName && userProfile.firstName) {
                 displayName = userProfile.firstName;
               } else if (!displayName && userProfile.lastName) {
                 displayName = userProfile.lastName;
               }
-              
+
               userNameMap[userId] = displayName || userProfile.email || userId;
             } else {
               // Fallback to userId if profile not found
@@ -89,11 +105,11 @@ export default function WorkflowList({
           }
         })
       );
-      
+
       setUserNames(userNameMap);
     } catch (err) {
-      console.error('Error loading workflows:', err);
-      setError('Failed to load workflows');
+      console.error("Error loading workflows:", err);
+      setError("Failed to load workflows");
     } finally {
       setIsLoading(false);
     }
@@ -103,7 +119,9 @@ export default function WorkflowList({
    * Navigates to the workflow editor page for the specified workflow
    */
   const handleEditWorkflow = (workflowId: string) => {
-    router.push(`/organizations/${organizationId}/projects/${projectId}/automation/workflows/${workflowId}`);
+    router.push(
+      `/organizations/${organizationId}/projects/${projectId}/automation/workflows/${workflowId}`
+    );
   };
 
   /**
@@ -112,7 +130,11 @@ export default function WorkflowList({
    */
   const handleDeleteWorkflow = async (workflowId: string) => {
     // Require explicit user confirmation for destructive action
-    if (!confirm('Are you sure you want to delete this workflow? This action cannot be undone.')) {
+    if (
+      !confirm(
+        "Are you sure you want to delete this workflow? This action cannot be undone."
+      )
+    ) {
       return;
     }
 
@@ -120,10 +142,10 @@ export default function WorkflowList({
       setDeletingWorkflowId(workflowId); // Show loading state on specific workflow
       await deleteWorkflow(workflowId);
       // Update UI by filtering out deleted workflow
-      setWorkflows(workflows.filter(w => w.id !== workflowId));
+      setWorkflows(workflows.filter((w) => w.id !== workflowId));
     } catch (err) {
-      console.error('Error deleting workflow:', err);
-      setError('Failed to delete workflow');
+      console.error("Error deleting workflow:", err);
+      setError("Failed to delete workflow");
     } finally {
       setDeletingWorkflowId(null);
     }
@@ -136,30 +158,30 @@ export default function WorkflowList({
   const handleRunWorkflow = async (workflow: Workflow) => {
     // Prevent execution of disabled workflows
     if (!workflow.isActive) {
-      setError('Cannot run disabled workflow. Please enable it first.');
+      setError("Cannot run disabled workflow. Please enable it first.");
       return;
     }
 
     try {
       setExecutingWorkflowId(workflow.id); // Show loading state for this specific workflow
       setError(null);
-      
+
       // Execute workflow with full context for proper authorization and data access
       const executionContext = await executeWorkflow(workflow.id, {
         projectId: projectId,
         currentUser: currentUser,
-        organizationId: organizationId
+        organizationId: organizationId,
       });
-      
+
       // Handle execution results with appropriate user feedback
-      if (executionContext.status === 'completed') {
-        alert('Workflow executed successfully!');
-      } else if (executionContext.status === 'failed') {
+      if (executionContext.status === "completed") {
+        alert("Workflow executed successfully!");
+      } else if (executionContext.status === "failed") {
         setError(`Workflow execution failed: ${executionContext.error}`);
       }
     } catch (err) {
-      console.error('Error executing workflow:', err);
-      setError('Failed to execute workflow');
+      console.error("Error executing workflow:", err);
+      setError("Failed to execute workflow");
     } finally {
       setExecutingWorkflowId(null);
     }
@@ -170,12 +192,12 @@ export default function WorkflowList({
    * Uses browser's locale-aware formatting for better internationalization
    */
   const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    return new Intl.DateTimeFormat("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     }).format(date);
   };
 
@@ -211,7 +233,8 @@ export default function WorkflowList({
             Manual Workflows
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Create workflows that run when you need them - all workflows require manual execution
+            Create workflows that run when you need them - all workflows require
+            manual execution
           </p>
         </div>
         <button
@@ -258,22 +281,25 @@ export default function WorkflowList({
                     <span
                       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         workflow.isActive
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
-                          : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
+                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400"
+                          : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400"
                       }`}
                     >
-                      {workflow.isActive ? 'Ready to Run' : 'Disabled'}
+                      {workflow.isActive ? "Ready to Run" : "Disabled"}
                     </span>
                   </div>
-                  
+
                   <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    {workflow.description || 'No description provided'}
+                    {workflow.description || "No description provided"}
                   </p>
-                  
+
                   <div className="flex items-center gap-6 text-sm text-gray-500 dark:text-gray-400">
                     <div className="flex items-center gap-1">
                       <User className="w-4 h-4" />
-                      <span>Created by {userNames[workflow.createdBy] || workflow.createdBy}</span>
+                      <span>
+                        Created by{" "}
+                        {userNames[workflow.createdBy] || workflow.createdBy}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1">
                       <Calendar className="w-4 h-4" />
@@ -285,15 +311,17 @@ export default function WorkflowList({
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-2 ml-4">
                   <button
                     onClick={() => handleRunWorkflow(workflow)}
-                    disabled={!workflow.isActive || executingWorkflowId === workflow.id}
+                    disabled={
+                      !workflow.isActive || executingWorkflowId === workflow.id
+                    }
                     className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                       workflow.isActive
-                        ? 'text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-600 hover:bg-green-100 dark:hover:bg-green-900/30'
-                        : 'text-gray-500 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600'
+                        ? "text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-600 hover:bg-green-100 dark:hover:bg-green-900/30"
+                        : "text-gray-500 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600"
                     }`}
                   >
                     {executingWorkflowId === workflow.id ? (
@@ -301,9 +329,9 @@ export default function WorkflowList({
                     ) : (
                       <Play className="w-4 h-4 mr-1" />
                     )}
-                    {executingWorkflowId === workflow.id ? 'Running...' : 'Run'}
+                    {executingWorkflowId === workflow.id ? "Running..." : "Run"}
                   </button>
-                  
+
                   <button
                     onClick={() => handleEditWorkflow(workflow.id)}
                     className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
@@ -311,7 +339,7 @@ export default function WorkflowList({
                     <Edit className="w-4 h-4 mr-1" />
                     Edit
                   </button>
-                  
+
                   <button
                     onClick={() => handleDeleteWorkflow(workflow.id)}
                     disabled={deletingWorkflowId === workflow.id}

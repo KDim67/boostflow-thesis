@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -19,8 +19,6 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
-
-
 /**
  * Root layout component that wraps all pages in the application
  * Provides global styling, font configuration, and essential providers
@@ -38,9 +36,7 @@ export default function RootLayout({
         {/* Firebase authentication and database provider */}
         <FirebaseProvider>
           {/* Application-wide layout wrapper with navigation and common UI */}
-          <LayoutWrapper>
-            {children}
-          </LayoutWrapper>
+          <LayoutWrapper>{children}</LayoutWrapper>
         </FirebaseProvider>
       </body>
     </html>

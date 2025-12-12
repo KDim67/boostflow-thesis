@@ -12,14 +12,18 @@ import {
   limit,
   onSnapshot,
   serverTimestamp,
-  Unsubscribe
-} from 'firebase/firestore';
-import { db } from './config';
-import { Notification, NotificationType, NotificationPreferences } from '../types/notification';
-import { createLogger } from '../utils/logger';
+  Unsubscribe,
+} from "firebase/firestore";
+import { db } from "./config";
+import {
+  Notification,
+  NotificationType,
+  NotificationPreferences,
+} from "../types/notification";
+import { createLogger } from "../utils/logger";
 
 // Logger instance for tracking notification service operations
-const logger = createLogger('NotificationService');
+const logger = createLogger("NotificationService");
 
 /**
  * Service class for managing user notifications in Firebase Firestore
@@ -48,13 +52,14 @@ export class NotificationService {
   ): Promise<string> {
     try {
       // Generate a new document reference with auto-generated ID
-      const notificationRef = doc(collection(db, 'notifications'));
-      
+      const notificationRef = doc(collection(db, "notifications"));
+
       // Build notification data object, conditionally including optional fields
       // Uses spread operator to avoid storing undefined/null values in Firestore
-      const notificationData: Omit<Notification, 'id'> = {
+      const notificationData: Omit<Notification, "id"> = {
         userId,
-        ...(organizationId !== undefined && organizationId !== null && { organizationId }),
+        ...(organizationId !== undefined &&
+          organizationId !== null && { organizationId }),
         title,
         message,
         type,
@@ -62,14 +67,14 @@ export class NotificationService {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         ...(actionUrl !== undefined && actionUrl !== null && { actionUrl }),
-        ...(metadata !== undefined && metadata !== null && { metadata })
+        ...(metadata !== undefined && metadata !== null && { metadata }),
       };
 
       await setDoc(notificationRef, notificationData);
       logger.info(`Notification created for user: ${userId}`, { type, title });
       return notificationRef.id;
     } catch (error) {
-      logger.error('Error creating notification:', error as Error);
+      logger.error("Error creating notification:", error as Error);
       throw error;
     }
   }
@@ -89,13 +94,13 @@ export class NotificationService {
     includeHidden: boolean = true
   ): Promise<Notification[]> {
     try {
-      const notificationsRef = collection(db, 'notifications');
-      
+      const notificationsRef = collection(db, "notifications");
+
       // Build base query for user's notifications, ordered by newest first
       let q = query(
         notificationsRef,
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc'),
+        where("userId", "==", userId),
+        orderBy("createdAt", "desc"),
         limit(limitCount)
       );
 
@@ -103,23 +108,23 @@ export class NotificationService {
       if (unreadOnly) {
         q = query(
           notificationsRef,
-          where('userId', '==', userId),
-          where('read', '==', false),
-          orderBy('createdAt', 'desc'),
+          where("userId", "==", userId),
+          where("read", "==", false),
+          orderBy("createdAt", "desc"),
           limit(limitCount)
         );
       }
 
       const querySnapshot = await getDocs(q);
       const notifications: Notification[] = [];
-      
+
       // Process each document and apply client-side filtering
       querySnapshot.forEach((doc) => {
         const notification = {
           id: doc.id,
-          ...doc.data()
+          ...doc.data(),
         } as Notification;
-        
+
         // Filter out hidden notifications unless explicitly requested
         if (includeHidden || !notification.hiddenFromDropdown) {
           notifications.push(notification);
@@ -128,7 +133,7 @@ export class NotificationService {
 
       return notifications;
     } catch (error) {
-      logger.error('Error fetching user notifications:', error as Error);
+      logger.error("Error fetching user notifications:", error as Error);
       throw error;
     }
   }
@@ -147,38 +152,42 @@ export class NotificationService {
     limitCount: number = 20,
     includeHidden: boolean = true
   ): Unsubscribe {
-    const notificationsRef = collection(db, 'notifications');
-    
+    const notificationsRef = collection(db, "notifications");
+
     // Set up query for real-time notifications
     const q = query(
       notificationsRef,
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc'),
+      where("userId", "==", userId),
+      orderBy("createdAt", "desc"),
       limit(limitCount)
     );
 
     // Return the unsubscribe function from onSnapshot
-    return onSnapshot(q, (querySnapshot) => {
-      const notifications: Notification[] = [];
-      
-      // Process each notification document
-      querySnapshot.forEach((doc) => {
-        const notification = {
-          id: doc.id,
-          ...doc.data()
-        } as Notification;
-        
-        // Apply client-side filtering for hidden notifications
-        if (includeHidden || !notification.hiddenFromDropdown) {
-          notifications.push(notification);
-        }
-      });
-      
-      // Trigger callback with filtered notifications
-      callback(notifications);
-    }, (error) => {
-      logger.error('Error in notifications subscription:', error);
-    });
+    return onSnapshot(
+      q,
+      (querySnapshot) => {
+        const notifications: Notification[] = [];
+
+        // Process each notification document
+        querySnapshot.forEach((doc) => {
+          const notification = {
+            id: doc.id,
+            ...doc.data(),
+          } as Notification;
+
+          // Apply client-side filtering for hidden notifications
+          if (includeHidden || !notification.hiddenFromDropdown) {
+            notifications.push(notification);
+          }
+        });
+
+        // Trigger callback with filtered notifications
+        callback(notifications);
+      },
+      (error) => {
+        logger.error("Error in notifications subscription:", error);
+      }
+    );
   }
 
   /**
@@ -187,14 +196,14 @@ export class NotificationService {
    */
   static async markAsRead(notificationId: string): Promise<void> {
     try {
-      const notificationRef = doc(db, 'notifications', notificationId);
+      const notificationRef = doc(db, "notifications", notificationId);
       await updateDoc(notificationRef, {
         read: true,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       });
       logger.info(`Notification marked as read: ${notificationId}`);
     } catch (error) {
-      logger.error('Error marking notification as read:', error as Error);
+      logger.error("Error marking notification as read:", error as Error);
       throw error;
     }
   }
@@ -209,15 +218,15 @@ export class NotificationService {
     updates: Partial<Notification>
   ): Promise<void> {
     try {
-      const notificationRef = doc(db, 'notifications', notificationId);
+      const notificationRef = doc(db, "notifications", notificationId);
       // Merge updates with automatic timestamp update
       await updateDoc(notificationRef, {
         ...updates,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       });
       logger.info(`Notification updated: ${notificationId}`);
     } catch (error) {
-      logger.error('Error updating notification:', error as Error);
+      logger.error("Error updating notification:", error as Error);
       throw error;
     }
   }
@@ -230,17 +239,17 @@ export class NotificationService {
     try {
       // Fetch up to 100 unread notifications for the user
       const notifications = await this.getUserNotifications(userId, 100, true);
-      
+
       // Create array of promises to mark each notification as read
-      const updatePromises = notifications.map(notification => 
+      const updatePromises = notifications.map((notification) =>
         this.markAsRead(notification.id)
       );
-      
+
       // Execute all updates concurrently
       await Promise.all(updatePromises);
       logger.info(`All notifications marked as read for user: ${userId}`);
     } catch (error) {
-      logger.error('Error marking all notifications as read:', error as Error);
+      logger.error("Error marking all notifications as read:", error as Error);
       throw error;
     }
   }
@@ -251,11 +260,11 @@ export class NotificationService {
    */
   static async deleteNotification(notificationId: string): Promise<void> {
     try {
-      const notificationRef = doc(db, 'notifications', notificationId);
+      const notificationRef = doc(db, "notifications", notificationId);
       await deleteDoc(notificationRef);
       logger.info(`Notification deleted: ${notificationId}`);
     } catch (error) {
-      logger.error('Error deleting notification:', error as Error);
+      logger.error("Error deleting notification:", error as Error);
       throw error;
     }
   }
@@ -267,14 +276,14 @@ export class NotificationService {
    */
   static async hideFromDropdown(notificationId: string): Promise<void> {
     try {
-      const notificationRef = doc(db, 'notifications', notificationId);
+      const notificationRef = doc(db, "notifications", notificationId);
       await updateDoc(notificationRef, {
         hiddenFromDropdown: true,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       });
       logger.info(`Notification hidden from dropdown: ${notificationId}`);
     } catch (error) {
-      logger.error('Error hiding notification from dropdown:', error as Error);
+      logger.error("Error hiding notification from dropdown:", error as Error);
       throw error;
     }
   }
@@ -285,27 +294,34 @@ export class NotificationService {
    * @param userId - User's unique identifier
    * @param membershipId - Membership ID associated with the invitation
    */
-  static async removeInvitationNotification(userId: string, membershipId: string): Promise<void> {
+  static async removeInvitationNotification(
+    userId: string,
+    membershipId: string
+  ): Promise<void> {
     try {
-      const notificationsRef = collection(db, 'notifications');
-      
+      const notificationsRef = collection(db, "notifications");
+
       // Query for specific invitation notifications
       const q = query(
         notificationsRef,
-        where('userId', '==', userId),
-        where('type', '==', 'organization_invite'),
-        where('metadata.membershipId', '==', membershipId)
+        where("userId", "==", userId),
+        where("type", "==", "organization_invite"),
+        where("metadata.membershipId", "==", membershipId)
       );
 
       const querySnapshot = await getDocs(q);
-      
+
       // Delete all matching invitation notifications concurrently
-      const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
+      const deletePromises = querySnapshot.docs.map((doc) =>
+        deleteDoc(doc.ref)
+      );
       await Promise.all(deletePromises);
-      
-      logger.info(`Invitation notification removed for user: ${userId}, membership: ${membershipId}`);
+
+      logger.info(
+        `Invitation notification removed for user: ${userId}, membership: ${membershipId}`
+      );
     } catch (error) {
-      logger.error('Error removing invitation notification:', error as Error);
+      logger.error("Error removing invitation notification:", error as Error);
       throw error;
     }
   }
@@ -318,10 +334,14 @@ export class NotificationService {
   static async getUnreadCount(userId: string): Promise<number> {
     try {
       // Fetch unread notifications (limited to 100 for performance)
-      const unreadNotifications = await this.getUserNotifications(userId, 100, true);
+      const unreadNotifications = await this.getUserNotifications(
+        userId,
+        100,
+        true
+      );
       return unreadNotifications.length;
     } catch (error) {
-      logger.error('Error getting unread count:', error as Error);
+      logger.error("Error getting unread count:", error as Error);
       // Return 0 on error to prevent UI issues
       return 0;
     }
@@ -332,18 +352,20 @@ export class NotificationService {
    * @param userId - User's unique identifier
    * @returns Promise resolving to user preferences or null if not set
    */
-  static async getUserNotificationPreferences(userId: string): Promise<NotificationPreferences | null> {
+  static async getUserNotificationPreferences(
+    userId: string
+  ): Promise<NotificationPreferences | null> {
     try {
-      const preferencesRef = doc(db, 'userNotificationPreferences', userId);
+      const preferencesRef = doc(db, "userNotificationPreferences", userId);
       const preferencesDoc = await getDoc(preferencesRef);
-      
+
       // Return preferences if document exists, otherwise null for default settings
       if (preferencesDoc.exists()) {
         return preferencesDoc.data() as NotificationPreferences;
       }
       return null;
     } catch (error) {
-      logger.error('Error fetching notification preferences:', error as Error);
+      logger.error("Error fetching notification preferences:", error as Error);
       throw error;
     }
   }
@@ -358,16 +380,20 @@ export class NotificationService {
     preferences: NotificationPreferences
   ): Promise<void> {
     try {
-      const preferencesRef = doc(db, 'userNotificationPreferences', userId);
-      
+      const preferencesRef = doc(db, "userNotificationPreferences", userId);
+
       // Use merge: true to update existing preferences or create new document
-      await setDoc(preferencesRef, {
-        ...preferences,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+      await setDoc(
+        preferencesRef,
+        {
+          ...preferences,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
       logger.info(`Notification preferences updated for user: ${userId}`);
     } catch (error) {
-      logger.error('Error updating notification preferences:', error as Error);
+      logger.error("Error updating notification preferences:", error as Error);
       throw error;
     }
   }

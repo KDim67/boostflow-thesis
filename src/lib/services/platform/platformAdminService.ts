@@ -1,10 +1,10 @@
-import { admin, adminFirestore } from '@/lib/firebase/adminConfig';
-import { User } from 'firebase/auth';
-import { PlatformRole } from '@/lib/firebase/usePlatformAuth';
+import { admin, adminFirestore } from "@/lib/firebase/adminConfig";
+import { User } from "firebase/auth";
+import { PlatformRole } from "@/lib/firebase/usePlatformAuth";
 
 /**
  * Platform Administration Service
- * 
+ *
  * This service provides administrative functions for managing users, organizations,
  * system health metrics, and content moderation across the BoostFlow platform.
  * All functions use Firebase Admin SDK for elevated permissions.
@@ -20,7 +20,7 @@ export interface PlatformUser {
   displayName?: string;
   platformRole: PlatformRole; // Platform-wide role (admin, user, etc.)
   organizationId?: string; // Associated organization if applicable
-  status: 'active' | 'inactive' | 'suspended'; // Account status
+  status: "active" | "inactive" | "suspended"; // Account status
   lastActive?: Date; // Last login/activity timestamp
   createdAt: Date;
   securityLogs?: SecurityLogEntry[]; // Audit trail for security events
@@ -32,9 +32,9 @@ export interface PlatformUser {
 export interface Organization {
   id: string;
   name: string;
-  plan: 'standard' | 'professional' | 'enterprise'; // Subscription tier
+  plan: "standard" | "professional" | "enterprise"; // Subscription tier
   userCount: number; // Current number of users in organization
-  status: 'active' | 'trial' | 'suspended'; // Organization status
+  status: "active" | "trial" | "suspended"; // Organization status
   createdAt: Date;
   storageUsed: number; // Current storage usage in bytes
   storageLimit: number; // Maximum allowed storage in bytes
@@ -95,16 +95,19 @@ export interface SystemHealthMetrics {
  */
 export const getAllUsers = async (): Promise<PlatformUser[]> => {
   try {
-    const usersRef = adminFirestore.collection('users');
+    const usersRef = adminFirestore.collection("users");
     const snapshot = await usersRef.get();
-    
+
     // Map Firestore documents to PlatformUser objects
-    return snapshot.docs.map(doc => ({
-      uid: doc.id,
-      ...doc.data(),
-    } as PlatformUser));
+    return snapshot.docs.map(
+      (doc) =>
+        ({
+          uid: doc.id,
+          ...doc.data(),
+        }) as PlatformUser
+    );
   } catch (error) {
-    console.error('Error fetching all users:', error);
+    console.error("Error fetching all users:", error);
     throw error;
   }
 };
@@ -115,15 +118,20 @@ export const getAllUsers = async (): Promise<PlatformUser[]> => {
  * @returns Promise resolving to array of users with specified role
  * @throws Error if database query fails
  */
-export const getUsersByRole = async (role: PlatformRole): Promise<PlatformUser[]> => {
+export const getUsersByRole = async (
+  role: PlatformRole
+): Promise<PlatformUser[]> => {
   try {
-    const usersRef = adminFirestore.collection('users');
-    const snapshot = await usersRef.where('platformRole', '==', role).get();
-    
-    return snapshot.docs.map(doc => ({
-      uid: doc.id,
-      ...doc.data(),
-    } as PlatformUser));
+    const usersRef = adminFirestore.collection("users");
+    const snapshot = await usersRef.where("platformRole", "==", role).get();
+
+    return snapshot.docs.map(
+      (doc) =>
+        ({
+          uid: doc.id,
+          ...doc.data(),
+        }) as PlatformUser
+    );
   } catch (error) {
     console.error(`Error fetching users with role ${role}:`, error);
     throw error;
@@ -136,9 +144,12 @@ export const getUsersByRole = async (role: PlatformRole): Promise<PlatformUser[]
  * @param newRole - New platform role to assign
  * @throws Error if user doesn't exist or update fails
  */
-export const updateUserRole = async (uid: string, newRole: PlatformRole): Promise<void> => {
+export const updateUserRole = async (
+  uid: string,
+  newRole: PlatformRole
+): Promise<void> => {
   try {
-    const userRef = adminFirestore.collection('users').doc(uid);
+    const userRef = adminFirestore.collection("users").doc(uid);
     await userRef.update({
       platformRole: newRole,
       updatedAt: new Date(), // Track when role was changed
@@ -155,19 +166,22 @@ export const updateUserRole = async (uid: string, newRole: PlatformRole): Promis
  * @param reason - Reason for suspension (for audit trail)
  * @throws Error if user doesn't exist or suspension fails
  */
-export const suspendUser = async (uid: string, reason: string): Promise<void> => {
+export const suspendUser = async (
+  uid: string,
+  reason: string
+): Promise<void> => {
   try {
-    const userRef = adminFirestore.collection('users').doc(uid);
+    const userRef = adminFirestore.collection("users").doc(uid);
     await userRef.update({
-      status: 'suspended',
+      status: "suspended",
       suspensionReason: reason,
       suspendedAt: new Date(),
     });
-    
+
     // Create security log entry for suspension action
     await addSecurityLog(uid, {
       timestamp: new Date(),
-      action: 'user_suspended',
+      action: "user_suspended",
       details: { reason },
     });
   } catch (error) {
@@ -182,15 +196,18 @@ export const suspendUser = async (uid: string, reason: string): Promise<void> =>
  * @param logEntry - Security log entry to append
  * @throws Error if user doesn't exist or log update fails
  */
-export const addSecurityLog = async (uid: string, logEntry: SecurityLogEntry): Promise<void> => {
+export const addSecurityLog = async (
+  uid: string,
+  logEntry: SecurityLogEntry
+): Promise<void> => {
   try {
-    const userRef = adminFirestore.collection('users').doc(uid);
+    const userRef = adminFirestore.collection("users").doc(uid);
     const userDoc = await userRef.get();
-    
+
     if (userDoc.exists) {
       const userData = userDoc.data();
       const securityLogs = userData?.securityLogs || []; // Initialize empty array if no logs exist
-      
+
       // Append new log entry to existing logs
       await userRef.update({
         securityLogs: [...securityLogs, logEntry],
@@ -202,7 +219,6 @@ export const addSecurityLog = async (uid: string, logEntry: SecurityLogEntry): P
   }
 };
 
-
 /**
  * Retrieves all organizations for administrative management
  * @returns Promise resolving to array of all organizations
@@ -210,16 +226,19 @@ export const addSecurityLog = async (uid: string, logEntry: SecurityLogEntry): P
  */
 export const getAllOrganizations = async (): Promise<Organization[]> => {
   try {
-    const orgsRef = adminFirestore.collection('organizations');
+    const orgsRef = adminFirestore.collection("organizations");
     const snapshot = await orgsRef.get();
-    
+
     // Map Firestore documents to Organization objects
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    } as Organization));
+    return snapshot.docs.map(
+      (doc) =>
+        ({
+          id: doc.id,
+          ...doc.data(),
+        }) as Organization
+    );
   } catch (error) {
-    console.error('Error fetching all organizations:', error);
+    console.error("Error fetching all organizations:", error);
     throw error;
   }
 };
@@ -230,18 +249,20 @@ export const getAllOrganizations = async (): Promise<Organization[]> => {
  * @returns Promise resolving to Organization object or null if not found
  * @throws Error if database query fails
  */
-export const getOrganizationById = async (orgId: string): Promise<Organization | null> => {
+export const getOrganizationById = async (
+  orgId: string
+): Promise<Organization | null> => {
   try {
-    const orgRef = adminFirestore.collection('organizations').doc(orgId);
+    const orgRef = adminFirestore.collection("organizations").doc(orgId);
     const orgDoc = await orgRef.get();
-    
+
     if (orgDoc.exists) {
       return {
         id: orgDoc.id,
         ...orgDoc.data(),
       } as Organization;
     }
-    
+
     return null; // Organization not found
   } catch (error) {
     console.error(`Error fetching organization ${orgId}:`, error);
@@ -255,9 +276,12 @@ export const getOrganizationById = async (orgId: string): Promise<Organization |
  * @param status - New status to set
  * @throws Error if organization doesn't exist or update fails
  */
-export const updateOrganizationStatus = async (orgId: string, status: 'active' | 'trial' | 'suspended'): Promise<void> => {
+export const updateOrganizationStatus = async (
+  orgId: string,
+  status: "active" | "trial" | "suspended"
+): Promise<void> => {
   try {
-    const orgRef = adminFirestore.collection('organizations').doc(orgId);
+    const orgRef = adminFirestore.collection("organizations").doc(orgId);
     await orgRef.update({
       status,
       updatedAt: new Date(), // Track when status was changed
@@ -274,9 +298,12 @@ export const updateOrganizationStatus = async (orgId: string, status: 'active' |
  * @param plan - New subscription plan (standard, professional, enterprise)
  * @throws Error if organization doesn't exist or update fails
  */
-export const updateOrganizationPlan = async (orgId: string, plan: 'standard' | 'professional' | 'enterprise'): Promise<void> => {
+export const updateOrganizationPlan = async (
+  orgId: string,
+  plan: "standard" | "professional" | "enterprise"
+): Promise<void> => {
   try {
-    const orgRef = adminFirestore.collection('organizations').doc(orgId);
+    const orgRef = adminFirestore.collection("organizations").doc(orgId);
     await orgRef.update({
       plan,
       updatedAt: new Date(), // Track when plan was changed
@@ -292,29 +319,32 @@ export const updateOrganizationPlan = async (orgId: string, plan: 'standard' | '
  * @returns Promise resolving to SystemHealthMetrics object
  * @throws Error if database query fails
  */
-export const getSystemHealthMetrics = async (): Promise<SystemHealthMetrics> => {
-  try {
-    const metricsRef = adminFirestore.collection('system').doc('health_metrics');
-    const metricsDoc = await metricsRef.get();
-    
-    if (metricsDoc.exists) {
-      return metricsDoc.data() as SystemHealthMetrics;
+export const getSystemHealthMetrics =
+  async (): Promise<SystemHealthMetrics> => {
+    try {
+      const metricsRef = adminFirestore
+        .collection("system")
+        .doc("health_metrics");
+      const metricsDoc = await metricsRef.get();
+
+      if (metricsDoc.exists) {
+        return metricsDoc.data() as SystemHealthMetrics;
+      }
+
+      // Return default metrics if document doesn't exist
+      return {
+        apiResponseTime: 0,
+        databasePerformance: 0,
+        storageUtilization: 0,
+        activeUsers: 0,
+        errorRate: 0,
+        lastUpdated: new Date(),
+      };
+    } catch (error) {
+      console.error("Error fetching system health metrics:", error);
+      throw error;
     }
-    
-    // Return default metrics if document doesn't exist
-    return {
-      apiResponseTime: 0,
-      databasePerformance: 0,
-      storageUtilization: 0,
-      activeUsers: 0,
-      errorRate: 0,
-      lastUpdated: new Date(),
-    };
-  } catch (error) {
-    console.error('Error fetching system health metrics:', error);
-    throw error;
-  }
-};
+  };
 
 /**
  * Updates system health metrics with new values
@@ -322,11 +352,15 @@ export const getSystemHealthMetrics = async (): Promise<SystemHealthMetrics> => 
  * @param metrics - Partial metrics object with values to update
  * @throws Error if database operation fails
  */
-export const updateSystemHealthMetrics = async (metrics: Partial<SystemHealthMetrics>): Promise<void> => {
+export const updateSystemHealthMetrics = async (
+  metrics: Partial<SystemHealthMetrics>
+): Promise<void> => {
   try {
-    const metricsRef = adminFirestore.collection('system').doc('health_metrics');
+    const metricsRef = adminFirestore
+      .collection("system")
+      .doc("health_metrics");
     const metricsDoc = await metricsRef.get();
-    
+
     if (metricsDoc.exists) {
       // Update existing metrics document
       await metricsRef.update({
@@ -345,7 +379,7 @@ export const updateSystemHealthMetrics = async (metrics: Partial<SystemHealthMet
       });
     }
   } catch (error) {
-    console.error('Error updating system health metrics:', error);
+    console.error("Error updating system health metrics:", error);
     throw error;
   }
 };
@@ -357,16 +391,18 @@ export const updateSystemHealthMetrics = async (metrics: Partial<SystemHealthMet
  */
 export const getContentModerationQueue = async () => {
   try {
-    const moderationRef = adminFirestore.collection('content_moderation');
-    const snapshot = await moderationRef.where('status', '==', 'pending_review').get();
-    
+    const moderationRef = adminFirestore.collection("content_moderation");
+    const snapshot = await moderationRef
+      .where("status", "==", "pending_review")
+      .get();
+
     // Map Firestore documents to content moderation objects
-    return snapshot.docs.map(doc => ({
+    return snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
   } catch (error) {
-    console.error('Error fetching content moderation queue:', error);
+    console.error("Error fetching content moderation queue:", error);
     throw error;
   }
 };
@@ -377,11 +413,16 @@ export const getContentModerationQueue = async () => {
  * @param moderatorId - ID of moderator performing the action
  * @throws Error if content doesn't exist or update fails
  */
-export const approveContent = async (contentId: string, moderatorId: string): Promise<void> => {
+export const approveContent = async (
+  contentId: string,
+  moderatorId: string
+): Promise<void> => {
   try {
-    const contentRef = adminFirestore.collection('content_moderation').doc(contentId);
+    const contentRef = adminFirestore
+      .collection("content_moderation")
+      .doc(contentId);
     await contentRef.update({
-      status: 'approved',
+      status: "approved",
       moderatedBy: moderatorId, // Track who approved the content
       moderatedAt: new Date(), // Track when approval occurred
     });
@@ -398,11 +439,17 @@ export const approveContent = async (contentId: string, moderatorId: string): Pr
  * @param reason - Reason for rejection (for audit and user feedback)
  * @throws Error if content doesn't exist or update fails
  */
-export const rejectContent = async (contentId: string, moderatorId: string, reason: string): Promise<void> => {
+export const rejectContent = async (
+  contentId: string,
+  moderatorId: string,
+  reason: string
+): Promise<void> => {
   try {
-    const contentRef = adminFirestore.collection('content_moderation').doc(contentId);
+    const contentRef = adminFirestore
+      .collection("content_moderation")
+      .doc(contentId);
     await contentRef.update({
-      status: 'rejected',
+      status: "rejected",
       moderatedBy: moderatorId, // Track who rejected the content
       moderatedAt: new Date(), // Track when rejection occurred
       rejectionReason: reason, // Store reason for audit and user notification

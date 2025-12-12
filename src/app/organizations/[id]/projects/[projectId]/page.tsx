@@ -1,20 +1,29 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { useAuth } from '@/lib/firebase/useAuth';
-import { getOrganization, hasOrganizationPermission } from '@/lib/firebase/organizationService';
-import { getDocument, queryDocuments, createDocument, updateDocument, deleteDocument } from '@/lib/firebase/firestoreService';
-import { where } from 'firebase/firestore';
-import { Organization } from '@/lib/types/organization';
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useAuth } from "@/lib/firebase/useAuth";
+import {
+  getOrganization,
+  hasOrganizationPermission,
+} from "@/lib/firebase/organizationService";
+import {
+  getDocument,
+  queryDocuments,
+  createDocument,
+  updateDocument,
+  deleteDocument,
+} from "@/lib/firebase/firestoreService";
+import { where } from "firebase/firestore";
+import { Organization } from "@/lib/types/organization";
 
-import Badge from '@/components/Badge';
-import OrganizationProjectsTasks from './tasks/page';
-import OrganizationProjectsTeam from './team/page';
-import ProjectDocumentsPage from './documents/page';
-import OrganizationProjectsAnalytics from './analytics/page';
-import ProjectWorkflowsPage from './automation/page';
+import Badge from "@/components/Badge";
+import OrganizationProjectsTasks from "./tasks/page";
+import OrganizationProjectsTeam from "./team/page";
+import ProjectDocumentsPage from "./documents/page";
+import OrganizationProjectsAnalytics from "./analytics/page";
+import ProjectWorkflowsPage from "./automation/page";
 
 // Interface for individual task items within a project
 interface Task {
@@ -32,7 +41,7 @@ interface Milestone {
   title: string;
   description?: string; // Optional milestone description
   dueDate: string;
-  status: 'Completed' | 'In Progress' | 'Pending';
+  status: "Completed" | "In Progress" | "Pending";
   projectId: string; // Foreign key to parent project
   createdBy: string; // User ID who created the milestone
   createdAt: any; // Firestore timestamp
@@ -69,7 +78,7 @@ interface Project {
 
 /**
  * ProjectDetailPage Component
- * 
+ *
  * Main component for displaying detailed project information including:
  * - Project overview with milestones and recent tasks
  * - Tabbed interface for tasks, documents, team, analytics, and workflows
@@ -79,47 +88,56 @@ interface Project {
 export default function ProjectDetailPage() {
   // Extract URL parameters for organization and project IDs
   const { id, projectId } = useParams();
-  
+
   // Core data state
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
-  
+
   // UI state management
-  const [activeTab, setActiveTab] = useState('overview'); // Controls which tab content is displayed
+  const [activeTab, setActiveTab] = useState("overview"); // Controls which tab content is displayed
   const [isLoading, setIsLoading] = useState(true); // Loading state for initial data fetch
   const [error, setError] = useState<string | null>(null); // Error message display
-  const [canAccessAdvancedFeatures, setCanAccessAdvancedFeatures] = useState(false); // Permission for analytics and workflows
-  
+  const [canAccessAdvancedFeatures, setCanAccessAdvancedFeatures] =
+    useState(false); // Permission for analytics and workflows
+
   // Milestone modal state
   const [showMilestoneModal, setShowMilestoneModal] = useState(false);
-  const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null); // null for new, object for edit
+  const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(
+    null
+  ); // null for new, object for edit
   const [milestoneForm, setMilestoneForm] = useState({
-    title: '',
-    description: '',
-    dueDate: '',
-    status: 'Pending' as 'Completed' | 'In Progress' | 'Pending'
+    title: "",
+    description: "",
+    dueDate: "",
+    status: "Pending" as "Completed" | "In Progress" | "Pending",
   });
-  
+
   // Project edit modal state
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({ 
-    name: '', description: '', status: '', startDate: '', 
-    dueDate: '', client: '', budget: '', progress: 0 
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    status: "",
+    startDate: "",
+    dueDate: "",
+    client: "",
+    budget: "",
+    progress: 0,
   });
-  
+
   // Authentication and navigation
   const { user } = useAuth();
   const router = useRouter();
-  
+
   // Convert URL params to strings
   const organizationId = Array.isArray(id) ? id[0] : id;
   const projectIdString = Array.isArray(projectId) ? projectId[0] : projectId;
 
   /**
    * Main data fetching effect
-   * 
+   *
    * Handles:
    * 1. Permission verification for organization access
    * 2. Loading project, organization, tasks, milestones, and team data
@@ -130,76 +148,87 @@ export default function ProjectDetailPage() {
     const fetchProjectData = async () => {
       // Early return if required data is missing
       if (!user || !organizationId || !projectIdString) return;
-      
+
       try {
         setIsLoading(true);
         setError(null);
-        
+
         // Check if user has permission to view this organization
-        const permission = await hasOrganizationPermission(user.uid, organizationId, 'viewer');
-        
+        const permission = await hasOrganizationPermission(
+          user.uid,
+          organizationId,
+          "viewer"
+        );
+
         if (!permission) {
-          setError('You do not have permission to view this organization.');
+          setError("You do not have permission to view this organization.");
           setIsLoading(false);
           return;
         }
-        
+
         // Check if user has permission to access advanced features (analytics and workflows)
-        const canAccessAdvanced = await hasOrganizationPermission(user.uid, organizationId, 'member');
+        const canAccessAdvanced = await hasOrganizationPermission(
+          user.uid,
+          organizationId,
+          "member"
+        );
         setCanAccessAdvancedFeatures(canAccessAdvanced);
-        
+
         // Reset active tab if user doesn't have permission for advanced features
-        if (!canAccessAdvanced && (activeTab === 'analytics' || activeTab === 'workflows')) {
-          setActiveTab('overview');
+        if (
+          !canAccessAdvanced &&
+          (activeTab === "analytics" || activeTab === "workflows")
+        ) {
+          setActiveTab("overview");
         }
-        
+
         // Fetch organization data
         const orgData = await getOrganization(organizationId);
         setOrganization(orgData);
-        
+
         // Fetch main project document
-        const projectData = await getDocument('projects', projectIdString);
-        
+        const projectData = await getDocument("projects", projectIdString);
+
         if (!projectData) {
-          setError('Project not found');
+          setError("Project not found");
           setIsLoading(false);
           return;
         }
-        
+
         // Verify project belongs to the current organization (security check)
         if (projectData.organizationId !== organizationId) {
-          setError('This project does not belong to the selected organization');
+          setError("This project does not belong to the selected organization");
           setIsLoading(false);
           return;
         }
-        
+
         setProject(projectData as Project);
-        
+
         // Fetch related data in parallel for better performance
-        const tasksData = await queryDocuments('tasks', [
-          where('projectId', '==', projectIdString)
+        const tasksData = await queryDocuments("tasks", [
+          where("projectId", "==", projectIdString),
         ]);
         setTasks(tasksData as Task[]);
 
-        const milestonesData = await queryDocuments('milestones', [
-          where('projectId', '==', projectIdString)
+        const milestonesData = await queryDocuments("milestones", [
+          where("projectId", "==", projectIdString),
         ]);
         setMilestones(milestonesData as Milestone[]);
 
-        const teamData = await queryDocuments('team', [
-          where('projectId', '==', projectIdString)
+        const teamData = await queryDocuments("team", [
+          where("projectId", "==", projectIdString),
         ]);
-        
+
         // Update project with team members if any exist
         if (projectData && teamData.length > 0) {
-          setProject(prev => ({
+          setProject((prev) => ({
             ...prev!,
-            teamMembers: teamData as TeamMember[]
+            teamMembers: teamData as TeamMember[],
           }));
         }
       } catch (error) {
-        console.error('Error fetching project data:', error);
-        setError('Failed to load project data. Please try again.');
+        console.error("Error fetching project data:", error);
+        setError("Failed to load project data. Please try again.");
       } finally {
         setIsLoading(false);
       }
@@ -208,20 +237,18 @@ export default function ProjectDetailPage() {
     fetchProjectData();
   }, [user, organizationId, projectIdString]); // Re-run when user or IDs change
 
-
-
   /**
    * Milestone Management Functions
    */
-  
+
   // Initialize form for creating a new milestone
   const handleAddMilestone = () => {
     setEditingMilestone(null); // Clear editing state
     setMilestoneForm({
-      title: '',
-      description: '',
-      dueDate: '',
-      status: 'Pending'
+      title: "",
+      description: "",
+      dueDate: "",
+      status: "Pending",
     });
     setShowMilestoneModal(true);
   };
@@ -231,9 +258,9 @@ export default function ProjectDetailPage() {
     setEditingMilestone(milestone);
     setMilestoneForm({
       title: milestone.title,
-      description: milestone.description || '',
+      description: milestone.description || "",
       dueDate: milestone.dueDate,
-      status: milestone.status
+      status: milestone.status,
     });
     setShowMilestoneModal(true);
   };
@@ -241,35 +268,41 @@ export default function ProjectDetailPage() {
   // Save milestone
   const handleSaveMilestone = async () => {
     // Validate required fields
-    if (!milestoneForm.title.trim() || !milestoneForm.dueDate || !user || !projectIdString) return;
+    if (
+      !milestoneForm.title.trim() ||
+      !milestoneForm.dueDate ||
+      !user ||
+      !projectIdString
+    )
+      return;
 
     try {
       if (editingMilestone) {
         // Update existing milestone in Firestore
-        await updateDocument('milestones', editingMilestone.id, {
+        await updateDocument("milestones", editingMilestone.id, {
           title: milestoneForm.title.trim(),
           description: milestoneForm.description.trim(),
           dueDate: milestoneForm.dueDate,
-          status: milestoneForm.status
+          status: milestoneForm.status,
         });
-        
+
         // Update local state to reflect changes immediately
-        setMilestones(prev => prev.map(m => 
-          m.id === editingMilestone.id 
-            ? { ...m, ...milestoneForm }
-            : m
-        ));
+        setMilestones((prev) =>
+          prev.map((m) =>
+            m.id === editingMilestone.id ? { ...m, ...milestoneForm } : m
+          )
+        );
       } else {
         // Create new milestone in Firestore
-        const newMilestoneId = await createDocument('milestones', {
+        const newMilestoneId = await createDocument("milestones", {
           title: milestoneForm.title.trim(),
           description: milestoneForm.description.trim(),
           dueDate: milestoneForm.dueDate,
           status: milestoneForm.status,
           projectId: projectIdString,
-          createdBy: user.uid
+          createdBy: user.uid,
         });
-        
+
         // Create local milestone object with generated ID
         const newMilestone: Milestone = {
           id: newMilestoneId,
@@ -277,94 +310,106 @@ export default function ProjectDetailPage() {
           projectId: projectIdString,
           createdBy: user.uid,
           createdAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: new Date(),
         };
-        
+
         // Add to local state for immediate UI update
-        setMilestones(prev => [...prev, newMilestone]);
+        setMilestones((prev) => [...prev, newMilestone]);
       }
-      
+
       // Close modal and reset form state
       setShowMilestoneModal(false);
       setEditingMilestone(null);
     } catch (error) {
-      console.error('Error saving milestone:', error);
+      console.error("Error saving milestone:", error);
     }
   };
 
   // Delete milestone with confirmation
   const handleDeleteMilestone = async (milestoneId: string) => {
-    if (!confirm('Are you sure you want to delete this milestone?')) return;
-    
+    if (!confirm("Are you sure you want to delete this milestone?")) return;
+
     try {
-      await deleteDocument('milestones', milestoneId);
+      await deleteDocument("milestones", milestoneId);
       // Remove from local state immediately
-      setMilestones(prev => prev.filter(m => m.id !== milestoneId));
+      setMilestones((prev) => prev.filter((m) => m.id !== milestoneId));
     } catch (error) {
-      console.error('Error deleting milestone:', error);
+      console.error("Error deleting milestone:", error);
     }
   };
 
   // Quick status change for milestones
-  const handleMilestoneStatusChange = async (milestoneId: string, newStatus: 'Completed' | 'In Progress' | 'Pending') => {
+  const handleMilestoneStatusChange = async (
+    milestoneId: string,
+    newStatus: "Completed" | "In Progress" | "Pending"
+  ) => {
     try {
-      await updateDocument('milestones', milestoneId, { status: newStatus });
+      await updateDocument("milestones", milestoneId, { status: newStatus });
       // Update local state for immediate feedback
-      setMilestones(prev => prev.map(m => 
-        m.id === milestoneId ? { ...m, status: newStatus } : m
-      ));
+      setMilestones((prev) =>
+        prev.map((m) =>
+          m.id === milestoneId ? { ...m, status: newStatus } : m
+        )
+      );
     } catch (error) {
-      console.error('Error updating milestone status:', error);
+      console.error("Error updating milestone status:", error);
     }
   };
 
   /**
    * Task Management Functions
    */
-  
+
   // Update task status with completion timestamp tracking
-  const handleTaskStatusChange = async (taskId: string, newStatus: 'pending' | 'in-progress' | 'completed') => {
+  const handleTaskStatusChange = async (
+    taskId: string,
+    newStatus: "pending" | "in-progress" | "completed"
+  ) => {
     try {
       const updateData: any = { status: newStatus };
-      
+
       // Set completion timestamp when task is marked as completed
-      if (newStatus === 'completed') {
+      if (newStatus === "completed") {
         updateData.completedAt = new Date();
       } else {
         updateData.completedAt = null; // Clear completion time for non-completed tasks
       }
-      
-      await updateDocument('tasks', taskId, updateData);
-      
+
+      await updateDocument("tasks", taskId, updateData);
+
       // Update local state for immediate UI feedback
-      setTasks(prev => prev.map(t => 
-        t.id === taskId ? { 
-          ...t, 
-          status: newStatus,
-          completedAt: updateData.completedAt
-        } : t
-      ));
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                status: newStatus,
+                completedAt: updateData.completedAt,
+              }
+            : t
+        )
+      );
     } catch (error) {
-      console.error('Error updating task status:', error);
+      console.error("Error updating task status:", error);
     }
   };
 
   /**
    * Project Management Functions
    */
-  
+
   // Initialize project edit form with current project data
   const handleEditProject = () => {
     if (!project) return;
     setEditForm({
       name: project.name,
-      description: project.description || '',
+      description: project.description || "",
       status: project.status,
-      startDate: project.startDate || '',
+      startDate: project.startDate || "",
       dueDate: project.dueDate,
-      client: project.client || '',
-      budget: project.budget || '',
-      progress: project.progress
+      client: project.client || "",
+      budget: project.budget || "",
+      progress: project.progress,
     });
     setShowEditModal(true);
   };
@@ -376,7 +421,7 @@ export default function ProjectDetailPage() {
 
     try {
       // Update project in Firestore
-      await updateDocument('projects', project.id, {
+      await updateDocument("projects", project.id, {
         name: editForm.name.trim(),
         description: editForm.description.trim(),
         status: editForm.status,
@@ -384,26 +429,30 @@ export default function ProjectDetailPage() {
         dueDate: editForm.dueDate,
         client: editForm.client.trim(),
         budget: editForm.budget.trim(),
-        progress: editForm.progress
+        progress: editForm.progress,
       });
 
       // Update local project state for immediate UI update
-      setProject(prev => prev ? {
-        ...prev,
-        name: editForm.name.trim(),
-        description: editForm.description.trim(),
-        status: editForm.status,
-        startDate: editForm.startDate,
-        dueDate: editForm.dueDate,
-        client: editForm.client.trim(),
-        budget: editForm.budget.trim(),
-        progress: editForm.progress
-      } : null);
+      setProject((prev) =>
+        prev
+          ? {
+              ...prev,
+              name: editForm.name.trim(),
+              description: editForm.description.trim(),
+              status: editForm.status,
+              startDate: editForm.startDate,
+              dueDate: editForm.dueDate,
+              client: editForm.client.trim(),
+              budget: editForm.budget.trim(),
+              progress: editForm.progress,
+            }
+          : null
+      );
 
       setShowEditModal(false);
     } catch (error) {
-      console.error('Error updating project:', error);
-      alert('Failed to update project. Please try again.');
+      console.error("Error updating project:", error);
+      alert("Failed to update project. Please try again.");
     }
   };
 
@@ -419,12 +468,13 @@ export default function ProjectDetailPage() {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 max-w-2xl mx-auto">
         <h2 className="text-xl font-semibold mb-4 text-red-600 dark:text-red-400">
-          {error || 'Project not found'}
+          {error || "Project not found"}
         </h2>
         <p className="text-gray-600 dark:text-gray-400 mb-6">
-          The project you're looking for doesn't exist or you don't have permission to view it.
+          The project you're looking for doesn't exist or you don't have
+          permission to view it.
         </p>
-        <Link 
+        <Link
           href={`/organizations/${organizationId}`}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
         >
@@ -440,13 +490,11 @@ export default function ProjectDetailPage() {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{project.name}</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {project.name}
+            </h1>
             <div className="flex items-center mt-2">
-              <Badge 
-                type="status" 
-                value={project.status} 
-                size="sm" 
-              />
+              <Badge type="status" value={project.status} size="sm" />
               <span className="mx-2 text-gray-400">•</span>
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 Progress: {project.progress}%
@@ -454,7 +502,7 @@ export default function ProjectDetailPage() {
             </div>
           </div>
           <div className="flex items-center space-x-3">
-            <button 
+            <button
               onClick={handleEditProject}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
             >
@@ -469,41 +517,41 @@ export default function ProjectDetailPage() {
         <div className="border-b border-gray-200 dark:border-gray-700">
           <nav className="-mb-px flex space-x-8 px-6">
             <button
-              onClick={() => setActiveTab('overview')}
-              className={`py-4 px-1 ${activeTab === 'overview' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'} font-medium`}
+              onClick={() => setActiveTab("overview")}
+              className={`py-4 px-1 ${activeTab === "overview" ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"} font-medium`}
             >
               Overview
             </button>
             <button
-              onClick={() => setActiveTab('tasks')}
-              className={`py-4 px-1 ${activeTab === 'tasks' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'} font-medium`}
+              onClick={() => setActiveTab("tasks")}
+              className={`py-4 px-1 ${activeTab === "tasks" ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"} font-medium`}
             >
               Tasks
             </button>
             <button
-              onClick={() => setActiveTab('documents')}
-              className={`py-4 px-1 ${activeTab === 'documents' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'} font-medium`}
+              onClick={() => setActiveTab("documents")}
+              className={`py-4 px-1 ${activeTab === "documents" ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"} font-medium`}
             >
               Documents
             </button>
             <button
-              onClick={() => setActiveTab('team')}
-              className={`py-4 px-1 ${activeTab === 'team' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'} font-medium`}
+              onClick={() => setActiveTab("team")}
+              className={`py-4 px-1 ${activeTab === "team" ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"} font-medium`}
             >
               Team
             </button>
             {canAccessAdvancedFeatures && (
               <button
-                onClick={() => setActiveTab('analytics')}
-                className={`py-4 px-1 ${activeTab === 'analytics' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'} font-medium`}
+                onClick={() => setActiveTab("analytics")}
+                className={`py-4 px-1 ${activeTab === "analytics" ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"} font-medium`}
               >
                 Analytics
               </button>
             )}
             {canAccessAdvancedFeatures && (
               <button
-                onClick={() => setActiveTab('workflows')}
-                className={`py-4 px-1 ${activeTab === 'workflows' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'} font-medium`}
+                onClick={() => setActiveTab("workflows")}
+                className={`py-4 px-1 ${activeTab === "workflows" ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"} font-medium`}
               >
                 Workflows
               </button>
@@ -513,22 +561,35 @@ export default function ProjectDetailPage() {
 
         <div className="p-6">
           {/* Overview Tab */}
-          {activeTab === 'overview' && (
+          {activeTab === "overview" && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Main Content */}
               <div className="lg:col-span-2 space-y-6">
                 {/* Milestones */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
                   <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">Milestones</h3>
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                      Milestones
+                    </h3>
                     {canAccessAdvancedFeatures && (
-                      <button 
+                      <button
                         onClick={handleAddMilestone}
                         className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-lg shadow-sm hover:shadow-md transition-all text-sm"
                       >
                         <span className="flex items-center">
-                          <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          <svg
+                            className="h-4 w-4 mr-1"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                            />
                           </svg>
                           Add Milestone
                         </span>
@@ -542,58 +603,131 @@ export default function ProjectDetailPage() {
                           <li key={milestone.id} className="py-4">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center flex-1">
-                                <div className={`h-8 w-8 rounded-full flex items-center justify-center mr-3 ${canAccessAdvancedFeatures ? 'cursor-pointer' : 'cursor-default'} ${milestone.status === 'Completed' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' : milestone.status === 'In Progress' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}
-                                     onClick={() => {
-                                       if (canAccessAdvancedFeatures) {
-                                         const nextStatus = milestone.status === 'Pending' ? 'In Progress' : milestone.status === 'In Progress' ? 'Completed' : 'Pending';
-                                         handleMilestoneStatusChange(milestone.id, nextStatus);
-                                       }
-                                     }}>
-                                  {milestone.status === 'Completed' ? (
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                <div
+                                  className={`h-8 w-8 rounded-full flex items-center justify-center mr-3 ${canAccessAdvancedFeatures ? "cursor-pointer" : "cursor-default"} ${milestone.status === "Completed" ? "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" : milestone.status === "In Progress" ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}
+                                  onClick={() => {
+                                    if (canAccessAdvancedFeatures) {
+                                      const nextStatus =
+                                        milestone.status === "Pending"
+                                          ? "In Progress"
+                                          : milestone.status === "In Progress"
+                                            ? "Completed"
+                                            : "Pending";
+                                      handleMilestoneStatusChange(
+                                        milestone.id,
+                                        nextStatus
+                                      );
+                                    }
+                                  }}
+                                >
+                                  {milestone.status === "Completed" ? (
+                                    <svg
+                                      className="h-5 w-5"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M5 13l4 4L19 7"
+                                      />
                                     </svg>
-                                  ) : milestone.status === 'In Progress' ? (
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  ) : milestone.status === "In Progress" ? (
+                                    <svg
+                                      className="h-5 w-5"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                      />
                                     </svg>
                                   ) : (
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    <svg
+                                      className="h-5 w-5"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                      />
                                     </svg>
                                   )}
                                 </div>
                                 <div className="flex-1">
-                                  <h4 className="text-sm font-medium text-gray-900 dark:text-white">{milestone.title}</h4>
+                                  <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+                                    {milestone.title}
+                                  </h4>
                                   {milestone.description && (
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{milestone.description}</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                      {milestone.description}
+                                    </p>
                                   )}
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Due: {milestone.dueDate}</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    Due: {milestone.dueDate}
+                                  </p>
                                 </div>
                               </div>
                               <div className="flex items-center space-x-2">
-                                <Badge 
-                                  type="status" 
-                                  value={milestone.status} 
-                                  variant="with-icon" 
-                                  size="sm" 
+                                <Badge
+                                  type="status"
+                                  value={milestone.status}
+                                  variant="with-icon"
+                                  size="sm"
                                 />
                                 {canAccessAdvancedFeatures && (
                                   <>
                                     <button
-                                      onClick={() => handleEditMilestone(milestone)}
+                                      onClick={() =>
+                                        handleEditMilestone(milestone)
+                                      }
                                       className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                                     >
-                                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      <svg
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                        />
                                       </svg>
                                     </button>
                                     <button
-                                      onClick={() => handleDeleteMilestone(milestone.id)}
+                                      onClick={() =>
+                                        handleDeleteMilestone(milestone.id)
+                                      }
                                       className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                                     >
-                                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      <svg
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                        />
                                       </svg>
                                     </button>
                                   </>
@@ -605,18 +739,22 @@ export default function ProjectDetailPage() {
                       </ul>
                     ) : (
                       <div className="text-center py-6">
-                        <p className="text-gray-500 dark:text-gray-400">No milestones added yet.</p>
+                        <p className="text-gray-500 dark:text-gray-400">
+                          No milestones added yet.
+                        </p>
                       </div>
                     )}
                   </div>
                 </div>
-                
+
                 {/* Recent Tasks */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
                   <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">Recent Tasks</h3>
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                      Recent Tasks
+                    </h3>
                     <button
-                      onClick={() => setActiveTab('tasks')}
+                      onClick={() => setActiveTab("tasks")}
                       className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium"
                     >
                       View all
@@ -628,23 +766,37 @@ export default function ProjectDetailPage() {
                         {tasks.slice(0, 3).map((task) => (
                           <li key={task.id} className="py-4 flex items-start">
                             <div className="mr-3 pt-1">
-                              <input 
-                                type="checkbox" 
-                                checked={task.status === 'completed'}
+                              <input
+                                type="checkbox"
+                                checked={task.status === "completed"}
                                 onChange={(e) => {
                                   if (canAccessAdvancedFeatures) {
-                                    const newStatus = e.target.checked ? 'completed' : 'pending';
+                                    const newStatus = e.target.checked
+                                      ? "completed"
+                                      : "pending";
                                     handleTaskStatusChange(task.id, newStatus);
                                   }
                                 }}
                                 disabled={!canAccessAdvancedFeatures}
-                                className={`h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600 ${canAccessAdvancedFeatures ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`} 
+                                className={`h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600 ${canAccessAdvancedFeatures ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}
                               />
                             </div>
                             <div className="flex-1">
                               <div className="flex justify-between mb-1">
-                                <h4 className="text-sm font-medium text-gray-900 dark:text-white">{task.title}</h4>
-                                <Badge type="priority" value={task.priority?.toLowerCase() as 'low' | 'medium' | 'high' || 'medium'} variant="with-icon" size="md" />
+                                <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+                                  {task.title}
+                                </h4>
+                                <Badge
+                                  type="priority"
+                                  value={
+                                    (task.priority?.toLowerCase() as
+                                      | "low"
+                                      | "medium"
+                                      | "high") || "medium"
+                                  }
+                                  variant="with-icon"
+                                  size="md"
+                                />
                               </div>
                               <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
                                 <span>Assigned to: {task.assignee}</span>
@@ -656,74 +808,121 @@ export default function ProjectDetailPage() {
                       </ul>
                     ) : (
                       <div className="text-center py-6">
-                        <p className="text-gray-500 dark:text-gray-400">No tasks added yet.</p>
+                        <p className="text-gray-500 dark:text-gray-400">
+                          No tasks added yet.
+                        </p>
                       </div>
                     )}
                   </div>
                 </div>
               </div>
-              
+
               {/* Sidebar */}
               <div className="space-y-6">
                 {/* Project Info */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
                   <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">Project Info</h3>
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                      Project Info
+                    </h3>
                   </div>
                   <div className="px-6 py-5 space-y-4">
                     <div>
-                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Start Date</p>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{project.startDate || 'Not set'}</p>
+                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Start Date
+                      </p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {project.startDate || "Not set"}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Due Date</p>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{project.dueDate || 'Not set'}</p>
+                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Due Date
+                      </p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {project.dueDate || "Not set"}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Client</p>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{project.client || 'Not specified'}</p>
+                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Client
+                      </p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {project.client || "Not specified"}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Budget</p>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{project.budget || 'Not specified'}</p>
+                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Budget
+                      </p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {project.budget || "Not specified"}
+                      </p>
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Team Members */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
                   <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">Team Members</h3>
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                      Team Members
+                    </h3>
                   </div>
                   <div className="px-6 py-5">
                     {project.teamMembers && project.teamMembers.length > 0 ? (
                       <>
                         <ul className="divide-y divide-gray-200 dark:divide-gray-700">
                           {project.teamMembers.slice(0, 5).map((member) => (
-                            <li key={member.id} className="py-4 flex items-center">
+                            <li
+                              key={member.id}
+                              className="py-4 flex items-center"
+                            >
                               <div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 mr-3">
                                 {member.avatar ? (
-                                  <img src={member.avatar} alt={member.name} className="h-10 w-10 rounded-full" />
+                                  <img
+                                    src={member.avatar}
+                                    alt={member.name}
+                                    className="h-10 w-10 rounded-full"
+                                  />
                                 ) : (
                                   member.name.charAt(0).toUpperCase()
                                 )}
                               </div>
                               <div>
-                                <h4 className="text-sm font-medium text-gray-900 dark:text-white">{member.name}</h4>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{member.role}</p>
+                                <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+                                  {member.name}
+                                </h4>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  {member.role}
+                                </p>
                               </div>
                             </li>
                           ))}
                         </ul>
                         {project.teamMembers.length > 5 && (
                           <div className="mt-4 text-center">
-                            <Link 
+                            <Link
                               href={`/organizations/${organizationId}/projects/${projectId}/team`}
                               className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors inline-flex items-center"
                             >
-                              <span>View All Team Members ({project.teamMembers.length})</span>
-                              <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                              <span>
+                                View All Team Members (
+                                {project.teamMembers.length})
+                              </span>
+                              <svg
+                                className="ml-2 h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M13 7l5 5m0 0l-5 5m5-5H6"
+                                />
                               </svg>
                             </Link>
                           </div>
@@ -732,12 +931,28 @@ export default function ProjectDetailPage() {
                     ) : (
                       <div className="text-center py-4">
                         <div className="h-12 w-12 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 mx-auto mb-3">
-                          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                          <svg
+                            className="h-6 w-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                            />
                           </svg>
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">No team members yet</p>
-                        <Link href={`/organizations/${organizationId}/projects/${projectId}/team`} className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                          No team members yet
+                        </p>
+                        <Link
+                          href={`/organizations/${organizationId}/projects/${projectId}/team`}
+                          className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium"
+                        >
                           Add Team Member
                         </Link>
                       </div>
@@ -749,47 +964,45 @@ export default function ProjectDetailPage() {
           )}
 
           {/* Tasks Tab */}
-          {activeTab === 'tasks' && (
+          {activeTab === "tasks" && (
             <div>
               <OrganizationProjectsTasks />
             </div>
           )}
 
           {/* Documents Tab */}
-          {activeTab === 'documents' && (
+          {activeTab === "documents" && (
             <div>
               <ProjectDocumentsPage />
             </div>
           )}
 
           {/* Team Tab */}
-          {activeTab === 'team' && (
-            <OrganizationProjectsTeam/>
-          )}
+          {activeTab === "team" && <OrganizationProjectsTeam />}
 
           {/* Analytics Tab */}
-          {activeTab === 'analytics' && canAccessAdvancedFeatures && (
+          {activeTab === "analytics" && canAccessAdvancedFeatures && (
             <div>
               <OrganizationProjectsAnalytics />
             </div>
           )}
 
           {/* Workflows Tab */}
-          {activeTab === 'workflows' && canAccessAdvancedFeatures && (
+          {activeTab === "workflows" && canAccessAdvancedFeatures && (
             <div>
               <ProjectWorkflowsPage />
             </div>
           )}
         </div>
       </div>
-      
+
       {/* Milestone Modal */}
       {showMilestoneModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
               <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                {editingMilestone ? 'Edit Milestone' : 'Add New Milestone'}
+                {editingMilestone ? "Edit Milestone" : "Add New Milestone"}
               </h3>
             </div>
             <div className="px-6 py-4 space-y-4">
@@ -800,7 +1013,12 @@ export default function ProjectDetailPage() {
                 <input
                   type="text"
                   value={milestoneForm.title}
-                  onChange={(e) => setMilestoneForm(prev => ({ ...prev, title: e.target.value }))}
+                  onChange={(e) =>
+                    setMilestoneForm((prev) => ({
+                      ...prev,
+                      title: e.target.value,
+                    }))
+                  }
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                   placeholder="Enter milestone title"
                 />
@@ -811,7 +1029,12 @@ export default function ProjectDetailPage() {
                 </label>
                 <textarea
                   value={milestoneForm.description}
-                  onChange={(e) => setMilestoneForm(prev => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) =>
+                    setMilestoneForm((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                   placeholder="Enter milestone description"
                   rows={3}
@@ -824,7 +1047,12 @@ export default function ProjectDetailPage() {
                 <input
                   type="date"
                   value={milestoneForm.dueDate}
-                  onChange={(e) => setMilestoneForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                  onChange={(e) =>
+                    setMilestoneForm((prev) => ({
+                      ...prev,
+                      dueDate: e.target.value,
+                    }))
+                  }
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                 />
               </div>
@@ -834,7 +1062,15 @@ export default function ProjectDetailPage() {
                 </label>
                 <select
                   value={milestoneForm.status}
-                  onChange={(e) => setMilestoneForm(prev => ({ ...prev, status: e.target.value as 'Completed' | 'In Progress' | 'Pending' }))}
+                  onChange={(e) =>
+                    setMilestoneForm((prev) => ({
+                      ...prev,
+                      status: e.target.value as
+                        | "Completed"
+                        | "In Progress"
+                        | "Pending",
+                    }))
+                  }
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                 >
                   <option value="Pending">Pending</option>
@@ -855,7 +1091,7 @@ export default function ProjectDetailPage() {
                 disabled={!milestoneForm.title.trim() || !milestoneForm.dueDate}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {editingMilestone ? 'Update' : 'Create'}
+                {editingMilestone ? "Update" : "Create"}
               </button>
             </div>
           </div>
@@ -869,7 +1105,7 @@ export default function ProjectDetailPage() {
             <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
               Edit Project
             </h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -878,32 +1114,41 @@ export default function ProjectDetailPage() {
                 <input
                   type="text"
                   value={editForm.name}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                   placeholder="Enter project name"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Description
                 </label>
                 <textarea
                   value={editForm.description}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                   placeholder="Enter project description"
                   rows={3}
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Status
                 </label>
                 <select
                   value={editForm.status}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, status: e.target.value }))
+                  }
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                 >
                   <option value="planning">Planning</option>
@@ -912,7 +1157,7 @@ export default function ProjectDetailPage() {
                   <option value="completed">Completed</option>
                 </select>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -921,7 +1166,12 @@ export default function ProjectDetailPage() {
                   <input
                     type="date"
                     value={editForm.startDate}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, startDate: e.target.value }))}
+                    onChange={(e) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        startDate: e.target.value,
+                      }))
+                    }
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                   />
                 </div>
@@ -933,12 +1183,17 @@ export default function ProjectDetailPage() {
                     type="date"
                     value={editForm.dueDate}
                     min={editForm.startDate || undefined}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                    onChange={(e) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        dueDate: e.target.value,
+                      }))
+                    }
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                   />
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -947,7 +1202,12 @@ export default function ProjectDetailPage() {
                   <input
                     type="text"
                     value={editForm.client}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, client: e.target.value }))}
+                    onChange={(e) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        client: e.target.value,
+                      }))
+                    }
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                     placeholder="Client name or organization"
                   />
@@ -959,13 +1219,18 @@ export default function ProjectDetailPage() {
                   <input
                     type="text"
                     value={editForm.budget}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, budget: e.target.value }))}
+                    onChange={(e) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        budget: e.target.value,
+                      }))
+                    }
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                     placeholder="Project budget"
                   />
                 </div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Progress ({editForm.progress}%)
@@ -975,12 +1240,17 @@ export default function ProjectDetailPage() {
                   min="0"
                   max="100"
                   value={editForm.progress}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, progress: parseInt(e.target.value) }))}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      progress: parseInt(e.target.value),
+                    }))
+                  }
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
                 />
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3 mt-6">
               <button
                 onClick={() => setShowEditModal(false)}

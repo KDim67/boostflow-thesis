@@ -1,18 +1,18 @@
 // Test SendGrid email functionality
 // Run with: node test-sendgrid.js
 
-require('dotenv').config({ path: '.env.local' });
+require("dotenv").config({ path: ".env.local" });
 
-const sgMail = require('@sendgrid/mail');
+const sgMail = require("@sendgrid/mail");
 
 // Set API key
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 const msg = {
-  to: 'it2022150@hua.gr', // Your test email
-  from: 'noreply@boostflow.me', // Must be verified sender in SendGrid
-  subject: 'BoostFlow SendGrid Test Email',
-  text: 'This is a test email from BoostFlow to verify SendGrid integration is working correctly.',
+  to: "it2022150@hua.gr", // Your test email
+  from: "noreply@boostflow.me", // Must be verified sender in SendGrid
+  subject: "BoostFlow SendGrid Test Email",
+  text: "This is a test email from BoostFlow to verify SendGrid integration is working correctly.",
   html: `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #333;">BoostFlow SendGrid Test</h2>
@@ -34,19 +34,26 @@ const msg = {
 sgMail
   .send(msg)
   .then(() => {
-    console.log('✅ Test email sent successfully!');
-    console.log('📧 Email sent to: it2022053@hua.gr');
-    console.log('📤 From: noreply@boostflow.me');
-    console.log('🔑 Using SendGrid API Key:', process.env.SENDGRID_API_KEY ? 'Configured' : 'Missing');
+    console.log("✅ Test email sent successfully!");
+    console.log("📧 Email sent to: it2022053@hua.gr");
+    console.log("📤 From: noreply@boostflow.me");
+    console.log(
+      "🔑 Using SendGrid API Key:",
+      process.env.SENDGRID_API_KEY ? "Configured" : "Missing"
+    );
   })
   .catch((error) => {
-    console.error('❌ Failed to send test email:');
+    console.error("❌ Failed to send test email:");
     console.error(error.response ? error.response.body : error);
-    
+
     if (error.code === 403) {
-      console.log('\n🔍 Troubleshooting tips:');
-      console.log('1. Verify your SendGrid API key is correct');
-      console.log('2. Make sure the sender email (noreply@boostflow.me) is verified in SendGrid');
-      console.log('3. Check if your SendGrid account is active and not suspended');
+      console.log("\n🔍 Troubleshooting tips:");
+      console.log("1. Verify your SendGrid API key is correct");
+      console.log(
+        "2. Make sure the sender email (noreply@boostflow.me) is verified in SendGrid"
+      );
+      console.log(
+        "3. Check if your SendGrid account is active and not suspended"
+      );
     }
   });

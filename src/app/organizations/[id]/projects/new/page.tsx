@@ -1,22 +1,25 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { useAuth } from '@/lib/firebase/useAuth';
-import { getOrganization, hasOrganizationPermission } from '@/lib/firebase/organizationService';
-import { createDocument } from '@/lib/firebase/firestoreService';
-import { Organization } from '@/lib/types/organization';
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useAuth } from "@/lib/firebase/useAuth";
+import {
+  getOrganization,
+  hasOrganizationPermission,
+} from "@/lib/firebase/organizationService";
+import { createDocument } from "@/lib/firebase/firestoreService";
+import { Organization } from "@/lib/types/organization";
 
 /**
  * NewProjectPage Component
- * 
+ *
  * A comprehensive project creation page that allows users to:
  * - Create new projects within an organization
  * - Use AI-powered project generation for automated setup
  * - Set project details including dates, budget, and client information
  * - Automatically assign team members (organization owner and project creator)
- * 
+ *
  * Features:
  * - Permission-based access control
  * - AI integration for project suggestions
@@ -25,33 +28,33 @@ import { Organization } from '@/lib/types/organization';
 export default function NewProjectPage() {
   // Extract organization ID from URL parameters
   const { id } = useParams();
-  
+
   // State management for component data and UI states
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [isLoading, setIsLoading] = useState(true); // Loading state for initial data fetch
   const [isSubmitting, setIsSubmitting] = useState(false); // Form submission state
   const [error, setError] = useState<string | null>(null); // Error message display
-  
+
   // AI-related state management
-  const [aiPrompt, setAiPrompt] = useState(''); // User input for AI project generation
+  const [aiPrompt, setAiPrompt] = useState(""); // User input for AI project generation
   const [isGenerating, setIsGenerating] = useState(false); // AI generation loading state
   const [showAiSection, setShowAiSection] = useState(false); // Toggle AI section visibility
-  
+
   // Form data state with default values
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    status: 'planning', // Default status for new projects
-    startDate: '',
-    dueDate: '',
-    client: '',
-    budget: '',
+    name: "",
+    description: "",
+    status: "planning", // Default status for new projects
+    startDate: "",
+    dueDate: "",
+    client: "",
+    budget: "",
   });
-  
+
   // Authentication and navigation hooks
   const { user } = useAuth();
   const router = useRouter();
-  
+
   // Handle array or string organization ID from URL params
   const organizationId = Array.isArray(id) ? id[0] : id;
 
@@ -63,26 +66,32 @@ export default function NewProjectPage() {
     const fetchOrganizationData = async () => {
       // Early return if required data is missing
       if (!user || !organizationId) return;
-      
+
       try {
         setIsLoading(true);
         setError(null);
-        
+
         // Check if user has minimum 'member' permission to create projects
-        const permission = await hasOrganizationPermission(user.uid, organizationId, 'member');
-        
+        const permission = await hasOrganizationPermission(
+          user.uid,
+          organizationId,
+          "member"
+        );
+
         if (!permission) {
-          setError('You do not have permission to create projects in this organization.');
+          setError(
+            "You do not have permission to create projects in this organization."
+          );
           setIsLoading(false);
           return;
         }
-        
+
         // Fetch organization details for display
         const orgData = await getOrganization(organizationId);
         setOrganization(orgData);
       } catch (error) {
-        console.error('Error fetching organization data:', error);
-        setError('Failed to load organization data. Please try again.');
+        console.error("Error fetching organization data:", error);
+        setError("Failed to load organization data. Please try again.");
       } finally {
         setIsLoading(false);
       }
@@ -95,18 +104,22 @@ export default function NewProjectPage() {
    * Generic form input handler for all form fields
    * Updates formData state with new values while preserving other fields
    */
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
   /**
    * AI-powered project generation function
    * Sends user prompt to AI service and populates form with generated suggestions
-   * 
+   *
    * Side effects:
    * - Updates form data with AI suggestions
    * - Hides AI section and clears prompt on success
@@ -121,10 +134,10 @@ export default function NewProjectPage() {
       setError(null);
 
       // Call AI project generator API with user prompt and organization context
-      const response = await fetch('/api/ai/project-generator', {
-        method: 'POST',
+      const response = await fetch("/api/ai/project-generator", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           prompt: aiPrompt,
@@ -133,25 +146,25 @@ export default function NewProjectPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate project');
+        throw new Error("Failed to generate project");
       }
 
       const suggestion = await response.json();
 
       // Update form with AI-generated suggestions, preserving existing values as fallback
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        name: suggestion.name || '',
-        description: suggestion.description || '',
-        status: suggestion.suggestedStatus || 'planning'
+        name: suggestion.name || "",
+        description: suggestion.description || "",
+        status: suggestion.suggestedStatus || "planning",
       }));
 
       // Clean up AI section after successful generation
       setShowAiSection(false);
-      setAiPrompt('');
+      setAiPrompt("");
     } catch (error) {
-      console.error('Error generating project:', error);
-      setError('Failed to generate project with AI. Please try again.');
+      console.error("Error generating project:", error);
+      setError("Failed to generate project with AI. Please try again.");
     } finally {
       setIsGenerating(false);
     }
@@ -159,24 +172,24 @@ export default function NewProjectPage() {
 
   /**
    * Form submission handler for project creation
-   * 
+   *
    * Process:
    * 1. Creates the project document in Firestore
    * 2. Automatically adds organization owner as Project Manager (if different from creator)
    * 3. Adds project creator as Project Lead
    * 4. Redirects to the newly created project page
-   * 
+   *
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate required dependencies
     if (!user || !organization) return;
-    
+
     try {
       setIsSubmitting(true);
       setError(null);
-      
+
       // Prepare project data with metadata
       const projectData = {
         ...formData,
@@ -186,54 +199,58 @@ export default function NewProjectPage() {
         updatedAt: new Date(),
         progress: 0, // Initialize project progress
       };
-      
+
       // Create project document and get generated ID
-      const projectId = await createDocument('projects', projectData);
-      
+      const projectId = await createDocument("projects", projectData);
+
       // Automatically set up initial team members
       if (organizationId && projectId) {
         try {
           // Dynamic imports to reduce initial bundle size
-          const { getOrganizationMembers } = await import('@/lib/firebase/organizationService');
-          const { createDocument: createTeamDocument } = await import('@/lib/firebase/firestoreService');
-          const { serverTimestamp } = await import('firebase/firestore');
+          const { getOrganizationMembers } =
+            await import("@/lib/firebase/organizationService");
+          const { createDocument: createTeamDocument } =
+            await import("@/lib/firebase/firestoreService");
+          const { serverTimestamp } = await import("firebase/firestore");
 
           const orgMembers = await getOrganizationMembers(organizationId);
-          const owner = orgMembers.find(member => member.role === 'owner');
+          const owner = orgMembers.find((member) => member.role === "owner");
 
           // Add organization owner as Project Manager
           if (owner && owner.userId !== user.uid) {
             const ownerTeamData = {
-              name: owner.userProfile?.displayName || owner.userProfile?.email || 'Organization Owner',
-              email: owner.userProfile?.email || '',
+              name:
+                owner.userProfile?.displayName ||
+                owner.userProfile?.email ||
+                "Organization Owner",
+              email: owner.userProfile?.email || "",
               photoURL: owner.userProfile?.photoURL,
-              role: 'Project Manager', // Owner gets manager role by default
+              role: "Project Manager", // Owner gets manager role by default
               organizationId,
               projectId,
               userId: owner.userId,
               createdBy: user.uid,
               createdAt: serverTimestamp(),
             };
-            await createTeamDocument('team', ownerTeamData);
+            await createTeamDocument("team", ownerTeamData);
           }
 
           // Add project creator as Project Lead
           const creatorTeamData = {
-            name: user.displayName || user.email || 'Project Creator',
-            email: user.email || '',
+            name: user.displayName || user.email || "Project Creator",
+            email: user.email || "",
             photoURL: user.photoURL,
-            role: 'Project Lead', // Creator gets lead role by default
+            role: "Project Lead", // Creator gets lead role by default
             organizationId,
             projectId,
             userId: user.uid,
             createdBy: user.uid,
             createdAt: serverTimestamp(),
           };
-          await createTeamDocument('team', creatorTeamData);
-
+          await createTeamDocument("team", creatorTeamData);
         } catch (teamError) {
           // Non-critical error: project created successfully but team setup failed
-          console.error('Error adding automatic team members:', teamError);
+          console.error("Error adding automatic team members:", teamError);
           // Continue with redirect despite team setup failure
         }
       }
@@ -241,8 +258,8 @@ export default function NewProjectPage() {
       // Navigate to the newly created project page
       router.push(`/organizations/${organizationId}/projects/${projectId}`);
     } catch (error) {
-      console.error('Error creating project:', error);
-      setError('Failed to create project. Please try again.');
+      console.error("Error creating project:", error);
+      setError("Failed to create project. Please try again.");
       setIsSubmitting(false); // Re-enable form on error
     }
   };
@@ -259,12 +276,13 @@ export default function NewProjectPage() {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 max-w-2xl mx-auto">
         <h2 className="text-xl font-semibold mb-4 text-red-600 dark:text-red-400">
-          {error || 'Organization not found'}
+          {error || "Organization not found"}
         </h2>
         <p className="text-gray-600 dark:text-gray-400 mb-6">
-          The organization you're looking for doesn't exist or you don't have permission to create projects in it.
+          The organization you're looking for doesn't exist or you don't have
+          permission to create projects in it.
         </p>
-        <Link 
+        <Link
           href={`/organizations/${organizationId}`}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
         >
@@ -292,7 +310,11 @@ export default function NewProjectPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
                 </svg>
               </div>
@@ -308,13 +330,22 @@ export default function NewProjectPage() {
             <button
               type="button"
               onClick={() => setShowAiSection(!showAiSection)}
-              className={`bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-all duration-200 flex items-center space-x-2 focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-purple-600 shadow-md hover:shadow-lg ${showAiSection ? 'ring-2 ring-white/30' : ''}`}
-              aria-label={showAiSection ? 'Hide AI Generator' : 'Show AI Generator'}
+              className={`bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-all duration-200 flex items-center space-x-2 focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-purple-600 shadow-md hover:shadow-lg ${showAiSection ? "ring-2 ring-white/30" : ""}`}
+              aria-label={
+                showAiSection ? "Hide AI Generator" : "Show AI Generator"
+              }
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <svg
+                className="w-4 h-4"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
                 <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
               </svg>
-              <span className="font-medium">{showAiSection ? 'Hide Generator' : 'Use AI Generator'}</span>
+              <span className="font-medium">
+                {showAiSection ? "Hide Generator" : "Use AI Generator"}
+              </span>
             </button>
           </div>
         </div>
@@ -324,8 +355,16 @@ export default function NewProjectPage() {
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
               <div className="flex items-start space-x-3">
                 <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  <svg
+                    className="w-3 h-3 text-white"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                 </div>
                 <div>
@@ -333,14 +372,19 @@ export default function NewProjectPage() {
                     AI-Powered Project Creation
                   </h3>
                   <p className="text-sm text-blue-700 dark:text-blue-300">
-                    Describe your project idea and our AI will generate a comprehensive project name, description, and initial structure for you.
+                    Describe your project idea and our AI will generate a
+                    comprehensive project name, description, and initial
+                    structure for you.
                   </p>
                 </div>
               </div>
             </div>
 
             <div>
-              <label htmlFor="aiPrompt" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              <label
+                htmlFor="aiPrompt"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3"
+              >
                 Describe your project idea
               </label>
               <textarea
@@ -362,7 +406,9 @@ export default function NewProjectPage() {
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Be as detailed as possible for better AI suggestions
                 </p>
-                <span className={`text-xs ${aiPrompt.length > 400 ? 'text-red-600 dark:text-red-400' : aiPrompt.length > 50 ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
+                <span
+                  className={`text-xs ${aiPrompt.length > 400 ? "text-red-600 dark:text-red-400" : aiPrompt.length > 50 ? "text-green-600 dark:text-green-400" : "text-gray-400"}`}
+                >
                   {aiPrompt.length}/500 characters
                 </span>
               </div>
@@ -382,7 +428,11 @@ export default function NewProjectPage() {
                   </>
                 ) : (
                   <>
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <svg
+                      className="w-5 h-5"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
                       <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
                     </svg>
                     <span>Generate with AI</span>
@@ -399,7 +449,10 @@ export default function NewProjectPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Project Name */}
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label
+              htmlFor="name"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            >
               Project Name *
             </label>
             <input
@@ -416,7 +469,10 @@ export default function NewProjectPage() {
 
           {/* Project Description */}
           <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label
+              htmlFor="description"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            >
               Description
             </label>
             <textarea
@@ -432,7 +488,10 @@ export default function NewProjectPage() {
 
           {/* Project Status */}
           <div>
-            <label htmlFor="status" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label
+              htmlFor="status"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            >
               Status
             </label>
             <select
@@ -452,7 +511,10 @@ export default function NewProjectPage() {
           {/* Project Dates */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label
+                htmlFor="startDate"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              >
                 Start Date
               </label>
               <input
@@ -465,7 +527,10 @@ export default function NewProjectPage() {
               />
             </div>
             <div>
-              <label htmlFor="dueDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label
+                htmlFor="dueDate"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              >
                 Due Date
               </label>
               <input
@@ -483,7 +548,10 @@ export default function NewProjectPage() {
           {/* Client and Budget */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label htmlFor="client" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label
+                htmlFor="client"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              >
                 Client
               </label>
               <input
@@ -497,7 +565,10 @@ export default function NewProjectPage() {
               />
             </div>
             <div>
-              <label htmlFor="budget" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label
+                htmlFor="budget"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              >
                 Budget
               </label>
               <input
@@ -525,7 +596,7 @@ export default function NewProjectPage() {
               disabled={isSubmitting}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Creating...' : 'Create Project'}
+              {isSubmitting ? "Creating..." : "Create Project"}
             </button>
           </div>
         </form>

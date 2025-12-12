@@ -1,4 +1,4 @@
-import { Timestamp, FieldValue } from 'firebase/firestore';
+import { Timestamp, FieldValue } from "firebase/firestore";
 
 export interface Notification {
   id: string;
@@ -19,18 +19,18 @@ export interface Notification {
   };
 }
 
-export type NotificationType = 
-  | 'organization_invite'
-  | 'organization_invite_accepted'
-  | 'organization_invite_declined'
-  | 'plan_upgrade'
-  | 'plan_downgrade'
-  | 'member_joined'
-  | 'member_left'
-  | 'system_announcement'
-  | 'direct_message'
-  | 'channel_added'
-  | 'general';
+export type NotificationType =
+  | "organization_invite"
+  | "organization_invite_accepted"
+  | "organization_invite_declined"
+  | "plan_upgrade"
+  | "plan_downgrade"
+  | "member_joined"
+  | "member_left"
+  | "system_announcement"
+  | "direct_message"
+  | "channel_added"
+  | "general";
 
 export interface NotificationPreferences {
   email: boolean;

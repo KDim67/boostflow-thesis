@@ -1,6 +1,5 @@
 # BoostFlow
 
-
 <div align="center">
   <img src="public/harokopioXboostflow.png" alt="BoostFlow Logo" />
 </div>
@@ -16,6 +15,7 @@ This repository contains the source code for the B.Sc. Thesis "Design and Implem
 **Thesis Scope**: All commits after tag `team-submission-final` (Date: 12/09/2025) represent the individual work of [Dimitrios Koutsompinas](https://github.com/KDim67).
 
 ## Home Page
+
 <img src="public/previews/main_page_preview.png" alt="Home Page" width="800" />
 
 ## Features
@@ -36,24 +36,28 @@ This repository contains the source code for the B.Sc. Thesis "Design and Implem
 Explore BoostFlow's intuitive interface and powerful features through these screenshots:
 
 ### AI Analytics
+
 <img src="public/previews/ai-analytics-preview.png" alt="AI Analytics" width="800" />
 
-*AI-powered analytics providing insights into team productivity and project performance*
+_AI-powered analytics providing insights into team productivity and project performance_
 
 ### Communication Hub
+
 <img src="public/previews/communication-hub-preview.png" alt="Communication Hub" width="800" />
 
-*Team collaboration tools with organized channels and real-time messaging*
+_Team collaboration tools with organized channels and real-time messaging_
 
 ### Organizations Management
+
 <img src="public/previews/organizations-preview.png" alt="Organizations" width="800" />
 
-*Multi-tenant organization management with role-based access control*
+_Multi-tenant organization management with role-based access control_
 
 ### Workflow Automation
+
 <img src="public/previews/workflow-preview.png" alt="Workflow" width="800" />
 
-*Customizable workflow automation tools for streamlining repetitive tasks*
+_Customizable workflow automation tools for streamlining repetitive tasks_
 
 ## Getting Started
 
@@ -158,13 +162,13 @@ This project is a Next.js application with a Firebase backend and modern web tec
    NEXT_PUBLIC_GOOGLE_CLIENT_SECRET=your_google_client_secret
    NEXT_PUBLIC_GITHUB_CLIENT_ID=your_github_client_id
    NEXT_PUBLIC_GITHUB_CLIENT_SECRET=your_github_client_secret
-   
+
    # Server-side OAuth secrets (not exposed to client)
    GOOGLE_CLIENT_SECRET=your_google_client_secret
    GITHUB_CLIENT_SECRET=your_github_client_secret
    GOOGLE_CLIENT_ID=your_google_client_id
    GITHUB_CLIENT_ID=your_github_client_id
-   
+
    # General OAuth Configuration
    NEXT_PUBLIC_OAUTH_CLIENT_ID=your_oauth_client_id
 
@@ -214,7 +218,6 @@ npm run dev
 
 The application will start and be available at `http://localhost:3000` by default.
 
-
 ## Database Information
 
 BoostFlow uses Firebase Firestore as its primary database. No additional database installation is needed locally. The application will connect to Firestore automatically when started with proper configuration.
@@ -246,28 +249,30 @@ src/
 ## Key Features Implementation
 
 ### Authentication
+
 - Firebase Authentication with email/password
 - OAuth integration (Google, GitHub)
 - Role-based access control
 - Email verification system
 
 ### Organizations & Projects
+
 - Multi organization support
 - Project management with timelines and budgets
 - Team member invitation system
 - File upload and document management
 
 ### AI Integration
+
 - Google Generative AI for insights and automation
 - Project analytics and performance tracking
 - Automated task suggestions
 
 ### Communication
+
 - Real-time notifications
 - Team collaboration tools
 - Email integration with SendGrid
-
-
 
 ---
 

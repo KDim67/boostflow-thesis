@@ -7,7 +7,8 @@
     "//": "NEVER RUN IT WITH 0.0.0.0 ON ACTUAL SITES. REPLACE WITH: dev --turbopack ",
     "build": "next build --no-lint",
     "start": "next start -H 0.0.0.0 -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -23,9 +24,9 @@
     "firebase-admin": "^13.4.0",
     "lucide-react": "^0.511.0",
     "minio": "^8.0.5",
-    "next": "15.2.3",
+    "next": "^15.5.9",
     "next-themes": "^0.4.6",
-    "nodemailer": "^6.9.15",
+    "nodemailer": "^7.0.11",
     "react": "^19.0.0",
     "react-chartjs-2": "^5.3.0",
     "react-csv": "^2.2.2",
@@ -36,15 +37,23 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@eslint/js": "^9.39.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/nodemailer": "^6.4.15",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19",
     "@types/react-easy-crop": "^2.0.0",
-    "eslint": "^9",
+    "eslint": "^9.39.1",
     "eslint-config-next": "15.2.3",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^16.5.0",
+    "jiti": "^2.6.1",
+    "prettier": "^3.7.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "typescript-eslint": "^8.49.0"
   }
 }

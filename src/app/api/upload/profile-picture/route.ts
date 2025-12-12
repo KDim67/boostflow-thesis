@@ -1,8 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { uploadFile, BUCKETS, generateFileName, initializeBuckets } from '@/lib/minio/client';
-import { updateUserProfile } from '@/lib/firebase/userProfileService';
-import { getAuth } from 'firebase-admin/auth';
-import { adminApp } from '@/lib/firebase/admin';
+import { NextRequest, NextResponse } from "next/server";
+import {
+  uploadFile,
+  BUCKETS,
+  generateFileName,
+  initializeBuckets,
+} from "@/lib/minio/client";
+import { updateUserProfile } from "@/lib/firebase/userProfileService";
+import { getAuth } from "firebase-admin/auth";
+import { adminApp } from "@/lib/firebase/admin";
 
 const auth = getAuth(adminApp);
 
@@ -12,30 +17,31 @@ export async function POST(request: NextRequest) {
     await initializeBuckets();
 
     // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const token = authHeader.split('Bearer ')[1];
+    const token = authHeader.split("Bearer ")[1];
     const decodedToken = await auth.verifyIdToken(token);
     const userId = decodedToken.uid;
 
-
-
     // Parse the form data
     const formData = await request.formData();
-    const file = formData.get('file') as File;
+    const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
-        { error: 'Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.' },
+        {
+          error:
+            "Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.",
+        },
         { status: 400 }
       );
     }
@@ -44,7 +50,7 @@ export async function POST(request: NextRequest) {
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'File too large. Maximum size is 5MB.' },
+        { error: "File too large. Maximum size is 5MB." },
         { status: 400 }
       );
     }
@@ -54,7 +60,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
 
     // Generate consistent filename for profile pictures
-    const fileName = generateFileName(file.name, userId, 'profile');
+    const fileName = generateFileName(file.name, userId, "profile");
 
     // Upload to MinIO
     const fileUrl = await uploadFile(
@@ -73,17 +79,15 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date(),
     });
 
-
-
     return NextResponse.json({
       success: true,
       url: cacheBustedUrl,
-      message: 'Profile picture uploaded successfully',
+      message: "Profile picture uploaded successfully",
     });
   } catch (error) {
-    console.error('Error uploading profile picture:', error);
+    console.error("Error uploading profile picture:", error);
     return NextResponse.json(
-      { error: 'Failed to upload profile picture' },
+      { error: "Failed to upload profile picture" },
       { status: 500 }
     );
   }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 import {
   Integration,
   getIntegration,
@@ -7,35 +7,35 @@ import {
   getAvailableProviders,
   createIntegration,
   getAllIntegrations,
-  deleteIntegration
-} from '@/lib/services/integration/integrationService';
+  deleteIntegration,
+} from "@/lib/services/integration/integrationService";
 import {
   getGoogleOAuthUrl,
   getGitHubOAuthUrl,
   getProviderScopes,
-  OAuthConfig
-} from '@/lib/services/integration/oauthHelpers';
+  OAuthConfig,
+} from "@/lib/services/integration/oauthHelpers";
 
 /**
  * Props interface for the IntegrationSettings component
  * Supports both viewing all integrations and managing a specific integration
  */
 interface IntegrationSettingsProps {
-  currentUser: string;           // Current authenticated user identifier
-  integrationId?: string;        // Optional specific integration to manage
-  organizationId?: string;       // Optional organization context for new integrations
-  projectId?: string;            // Optional project context for new integrations
+  currentUser: string; // Current authenticated user identifier
+  integrationId?: string; // Optional specific integration to manage
+  organizationId?: string; // Optional organization context for new integrations
+  projectId?: string; // Optional project context for new integrations
 }
 
 /**
  * IntegrationSettings Component
- * 
+ *
  * Manages third-party integrations for BoostFlow, providing functionality to:
  * - View and manage existing integrations
  * - Connect new integrations via OAuth
  * - Configure integration settings, credentials, and data mapping
  * - Monitor sync history and perform manual syncs
- * 
+ *
  * The component operates in two modes:
  * 1. List mode: Shows all integrations and available providers
  * 2. Detail mode: Shows detailed settings for a specific integration
@@ -44,16 +44,18 @@ export default function IntegrationSettings({
   currentUser,
   integrationId,
   organizationId,
-  projectId
+  projectId,
 }: IntegrationSettingsProps) {
   const [integration, setIntegration] = useState<Integration | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
-  const [availableProviders, setAvailableProviders] = useState<Array<{ id: string; name: string; description: string; icon: string; }>>([]);
+  const [availableProviders, setAvailableProviders] = useState<
+    Array<{ id: string; name: string; description: string; icon: string }>
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('list');
+  const [activeTab, setActiveTab] = useState("list");
   const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
@@ -66,27 +68,27 @@ export default function IntegrationSettings({
     const loadData = async () => {
       try {
         setLoading(true);
-        
+
         // Fetch providers and integrations in parallel for better performance
         const [providers, allIntegrations] = await Promise.all([
           getAvailableProviders(),
-          getAllIntegrations()
+          getAllIntegrations(),
         ]);
-        
+
         setAvailableProviders(providers);
         setIntegrations(allIntegrations);
-        
+
         // If a specific integration is requested, load its details and switch to settings view
         if (integrationId) {
           const loadedIntegration = await getIntegration(integrationId);
           setIntegration(loadedIntegration);
-          setActiveTab('settings');
+          setActiveTab("settings");
         }
-        
+
         setError(null);
       } catch (err) {
-        console.error('Error loading integration data:', err);
-        setError('Failed to load integration data. Please try again.');
+        console.error("Error loading integration data:", err);
+        setError("Failed to load integration data. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -97,119 +99,121 @@ export default function IntegrationSettings({
 
   /**
    * Initiates OAuth connection flow for a third-party provider
-   * 
+   *
    * This function handles the complex OAuth 2.0 authorization code flow:
    * 1. Validates the provider and retrieves client credentials
    * 2. Generates a secure state parameter for CSRF protection
    * 3. Stores OAuth context in localStorage for callback handling
    * 4. Constructs provider-specific authorization URL
    * 5. Redirects user to provider's authorization page
-   * 
+   *
    * @param provider - The integration provider (google, github, etc.)
    */
   const handleOAuthConnect = async (provider: string) => {
     try {
       setIsConnecting(true);
       setError(null);
-      
+
       let authUrl: string;
       let clientId: string;
-      
+
       // Retrieve provider-specific client ID from environment variables
       switch (provider) {
-        case 'google':
+        case "google":
           clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!;
           break;
-        case 'github':
+        case "github":
           clientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID!;
           break;
         default:
           throw new Error(`Unsupported provider: ${provider}`);
       }
-      
+
       // Generate cryptographically secure state parameter for CSRF protection
-      const state = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      
+      const state =
+        Math.random().toString(36).substring(2, 15) +
+        Math.random().toString(36).substring(2, 15);
+
       // Store OAuth context in localStorage for callback processing
-      localStorage.setItem('oauth_provider', provider);
-      localStorage.setItem('oauth_state', state);
-      if (organizationId) localStorage.setItem('oauth_organization_id', organizationId);
-      if (projectId) localStorage.setItem('oauth_project_id', projectId);
-      
+      localStorage.setItem("oauth_provider", provider);
+      localStorage.setItem("oauth_state", state);
+      if (organizationId)
+        localStorage.setItem("oauth_organization_id", organizationId);
+      if (projectId) localStorage.setItem("oauth_project_id", projectId);
+
       // Configure OAuth parameters
       const oauthConfig: OAuthConfig = {
         clientId,
         redirectUri: `${window.location.origin}/oauth/callback`,
-        scopes: getProviderScopes(provider as any)
+        scopes: getProviderScopes(provider as any),
       };
-      
+
       // Generate provider-specific authorization URL
       switch (provider) {
-        case 'google':
+        case "google":
           authUrl = getGoogleOAuthUrl(oauthConfig);
           break;
-        case 'github':
+        case "github":
           authUrl = getGitHubOAuthUrl(oauthConfig);
           break;
         default:
           throw new Error(`Unsupported provider: ${provider}`);
       }
-      
+
       // Debug logging for OAuth flow troubleshooting
-      console.log('OAuth initiation debug:', {
+      console.log("OAuth initiation debug:", {
         provider: provider,
         generatedState: state,
-        authUrl: authUrl
+        authUrl: authUrl,
       });
-      
+
       // Verify state was stored correctly (additional security check)
-      const verifyState = localStorage.getItem('oauth_state');
-      console.log('State verification:', {
+      const verifyState = localStorage.getItem("oauth_state");
+      console.log("State verification:", {
         originalState: state,
         storedState: verifyState,
-        statesMatch: state === verifyState
+        statesMatch: state === verifyState,
       });
-      
+
       // Redirect to provider's authorization page
       window.location.href = authUrl;
-      
     } catch (err) {
-      console.error('OAuth connection error:', err);
+      console.error("OAuth connection error:", err);
       setError(`Failed to connect to ${provider}. Please try again.`);
       setIsConnecting(false);
     }
   };
-  
+
   /**
    * Deletes an integration and updates the UI state
-   * 
+   *
    * Handles both the API call and local state cleanup:
    * - Removes integration from server
    * - Updates local integrations list
    * - Navigates back to list view if currently viewing the deleted integration
-   * 
+   *
    * @param integrationId - ID of the integration to delete
    */
   const handleDeleteIntegration = async (integrationId: string) => {
     try {
       await deleteIntegration(integrationId);
       // Remove from local state immediately for responsive UI
-      setIntegrations(prev => prev.filter(int => int.id !== integrationId));
-      
+      setIntegrations((prev) => prev.filter((int) => int.id !== integrationId));
+
       // If we're currently viewing the deleted integration, navigate back to list
       if (integration?.id === integrationId) {
         setIntegration(null);
-        setActiveTab('list');
+        setActiveTab("list");
       }
     } catch (err) {
-      console.error('Error deleting integration:', err);
-      setError('Failed to delete integration. Please try again.');
+      console.error("Error deleting integration:", err);
+      setError("Failed to delete integration. Please try again.");
     }
   };
 
   /**
    * Toggles the active/inactive status of the current integration
-   * 
+   *
    * Updates both the server state and local UI state to reflect the change.
    * Only works when an integration is currently selected.
    */
@@ -219,23 +223,25 @@ export default function IntegrationSettings({
     try {
       // Toggle status
       const updatedIntegration = await updateIntegration(integration.id, {
-        status: integration.status === 'active' ? 'inactive' : 'active'
+        status: integration.status === "active" ? "inactive" : "active",
       });
-      
+
       // Update both the current integration and the integrations list
       setIntegration(updatedIntegration);
-      setIntegrations(prev => prev.map(int => 
-        int.id === updatedIntegration.id ? updatedIntegration : int
-      ));
+      setIntegrations((prev) =>
+        prev.map((int) =>
+          int.id === updatedIntegration.id ? updatedIntegration : int
+        )
+      );
     } catch (err) {
-      console.error('Error updating integration:', err);
-      setError('Failed to update integration. Please try again.');
+      console.error("Error updating integration:", err);
+      setError("Failed to update integration. Please try again.");
     }
   };
 
   /**
    * Performs manual synchronization with the external provider
-   * 
+   *
    * Triggers a sync operation and handles the response:
    * - Shows loading state during sync
    * - Displays success/error messages
@@ -249,11 +255,11 @@ export default function IntegrationSettings({
       setIsSyncing(true);
       setSyncMessage(null);
       setError(null);
-      
+
       const result = await syncIntegration(integration.id);
-      
+
       if (result.success) {
-        setSyncMessage('Sync completed successfully!');
+        setSyncMessage("Sync completed successfully!");
         // Refresh integration data to show updated sync timestamp
         const updatedIntegration = await getIntegration(integration.id);
         if (updatedIntegration) {
@@ -263,8 +269,8 @@ export default function IntegrationSettings({
         setError(`Sync failed: ${result.message}`);
       }
     } catch (err) {
-      console.error('Error syncing integration:', err);
-      setError('Failed to sync integration. Please try again.');
+      console.error("Error syncing integration:", err);
+      setError("Failed to sync integration. Please try again.");
     } finally {
       setIsSyncing(false);
       // Auto-clear success message after 5 seconds
@@ -287,23 +293,30 @@ export default function IntegrationSettings({
    * - User's existing integrations with status and action buttons
    * - Available providers that can be connected
    * - Empty state when no integrations exist
-   * 
+   *
    * This is the default view when no specific integration is selected.
    */
   const renderIntegrationsList = () => (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white">Your Integrations</h3>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+          Your Integrations
+        </h3>
       </div>
-      
+
       {integrations.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-gray-500 dark:text-gray-400 mb-4">No integrations configured yet.</p>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">
+            No integrations configured yet.
+          </p>
         </div>
       ) : (
         <div className="grid gap-4">
           {integrations.map((int) => (
-            <div key={int.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+            <div
+              key={int.id}
+              className="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="flex-shrink-0">
@@ -314,22 +327,28 @@ export default function IntegrationSettings({
                     </div>
                   </div>
                   <div>
-                    <h4 className="text-sm font-medium text-gray-900 dark:text-white">{int.name}</h4>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{int.provider} • {int.description}</p>
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+                      {int.name}
+                    </h4>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {int.provider} • {int.description}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    int.status === 'active' 
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                      : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
-                  }`}>
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      int.status === "active"
+                        ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                        : "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
+                    }`}
+                  >
                     {int.status}
                   </span>
                   <button
                     onClick={() => {
                       setIntegration(int);
-                      setActiveTab('settings');
+                      setActiveTab("settings");
                     }}
                     className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 text-sm"
                   >
@@ -347,25 +366,34 @@ export default function IntegrationSettings({
           ))}
         </div>
       )}
-      
+
       <div className="mt-6">
-        <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Available Providers</h4>
+        <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">
+          Available Providers
+        </h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {availableProviders.map((provider) => (
-            <div key={provider.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <div
+              key={provider.id}
+              className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
               <div className="flex items-center space-x-3">
                 <div className="flex-shrink-0">
                   <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                    <img 
-                      src={provider.icon} 
+                    <img
+                      src={provider.icon}
                       alt={`${provider.name} icon`}
                       className="w-6 h-6"
                     />
                   </div>
                 </div>
                 <div className="flex-1">
-                  <h5 className="text-sm font-medium text-gray-900 dark:text-white">{provider.name}</h5>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{provider.description}</p>
+                  <h5 className="text-sm font-medium text-gray-900 dark:text-white">
+                    {provider.name}
+                  </h5>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {provider.description}
+                  </p>
                 </div>
               </div>
               <button
@@ -373,7 +401,7 @@ export default function IntegrationSettings({
                 disabled={isConnecting}
                 className="mt-3 w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isConnecting ? 'Connecting...' : 'Connect'}
+                {isConnecting ? "Connecting..." : "Connect"}
               </button>
             </div>
           ))}
@@ -382,7 +410,7 @@ export default function IntegrationSettings({
     </div>
   );
 
-  if (!integration && activeTab !== 'list') {
+  if (!integration && activeTab !== "list") {
     return (
       <div className="bg-white dark:bg-gray-900 shadow rounded-lg p-6">
         {renderIntegrationsList()}
@@ -390,7 +418,7 @@ export default function IntegrationSettings({
     );
   }
 
-  if (activeTab === 'list') {
+  if (activeTab === "list") {
     return (
       <div className="bg-white dark:bg-gray-900 shadow rounded-lg p-6">
         {renderIntegrationsList()}
@@ -410,14 +438,27 @@ export default function IntegrationSettings({
     <div className="bg-white dark:bg-gray-900 shadow rounded-lg p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{integration.name}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{integration.description}</p>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+            {integration.name}
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {integration.description}
+          </p>
           <div className="mt-1 flex items-center">
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${integration.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'}`}>
-              {integration.status === 'active' ? 'Active' : integration.status === 'error' ? 'Error' : 'Inactive'}
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${integration.status === "active" ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"}`}
+            >
+              {integration.status === "active"
+                ? "Active"
+                : integration.status === "error"
+                  ? "Error"
+                  : "Inactive"}
             </span>
             <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-              Last synced: {integration.lastSyncAt ? new Date(integration.lastSyncAt).toLocaleString() : 'Never'}
+              Last synced:{" "}
+              {integration.lastSyncAt
+                ? new Date(integration.lastSyncAt).toLocaleString()
+                : "Never"}
             </span>
           </div>
         </div>
@@ -425,7 +466,7 @@ export default function IntegrationSettings({
           <button
             onClick={() => {
               setIntegration(null);
-              setActiveTab('list');
+              setActiveTab("list");
             }}
             className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           >
@@ -433,20 +474,20 @@ export default function IntegrationSettings({
           </button>
           <button
             onClick={handleSync}
-            disabled={isSyncing || integration.status !== 'active'}
+            disabled={isSyncing || integration.status !== "active"}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSyncing ? 'Syncing...' : 'Sync Now'}
+            {isSyncing ? "Syncing..." : "Sync Now"}
           </button>
           <button
             onClick={toggleIntegrationActive}
             className={`px-4 py-2 rounded-md ${
-              integration.status === 'active'
-                ? 'bg-red-600 hover:bg-red-700 text-white'
-                : 'bg-green-600 hover:bg-green-700 text-white'
+              integration.status === "active"
+                ? "bg-red-600 hover:bg-red-700 text-white"
+                : "bg-green-600 hover:bg-green-700 text-white"
             }`}
           >
-            {integration.status === 'active' ? 'Disable' : 'Enable'}
+            {integration.status === "active" ? "Disable" : "Enable"}
           </button>
         </div>
       </div>
@@ -465,14 +506,14 @@ export default function IntegrationSettings({
 
       <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
         <nav className="-mb-px flex space-x-8">
-          {['settings', 'credentials', 'mapping', 'history'].map((tab) => (
+          {["settings", "credentials", "mapping", "history"].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`py-2 px-1 border-b-2 font-medium text-sm capitalize ${
                 activeTab === tab
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                  ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300"
               }`}
             >
               {tab}
@@ -482,7 +523,7 @@ export default function IntegrationSettings({
       </div>
 
       {/* Settings Tab */}
-      {activeTab === 'settings' && (
+      {activeTab === "settings" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -496,7 +537,7 @@ export default function IntegrationSettings({
                 className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-3 py-2 text-sm disabled:opacity-75"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Provider
@@ -508,7 +549,7 @@ export default function IntegrationSettings({
                 className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-3 py-2 text-sm disabled:opacity-75 capitalize"
               />
             </div>
-            
+
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Description
@@ -520,7 +561,7 @@ export default function IntegrationSettings({
                 rows={2}
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Integration Type
@@ -532,7 +573,7 @@ export default function IntegrationSettings({
                 className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-3 py-2 text-sm disabled:opacity-75 capitalize"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Status
@@ -545,9 +586,11 @@ export default function IntegrationSettings({
               />
             </div>
           </div>
-          
+
           <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-            <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Integration Configuration</h4>
+            <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">
+              Integration Configuration
+            </h4>
             <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-md">
               <pre className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
                 {JSON.stringify(integration.config, null, 2)}
@@ -558,20 +601,24 @@ export default function IntegrationSettings({
       )}
 
       {/* Credentials Tab */}
-      {activeTab === 'credentials' && (
+      {activeTab === "credentials" && (
         <div>
           <div className="bg-yellow-50 dark:bg-yellow-900/30 p-4 rounded-md mb-4">
             <p className="text-sm text-yellow-800 dark:text-yellow-200">
-              Credentials are securely stored and encrypted. For security reasons, we only show partial information.
+              Credentials are securely stored and encrypted. For security
+              reasons, we only show partial information.
             </p>
           </div>
-          
+
           <div className="space-y-4">
             {Object.entries(integration.credentials).map(([key, value]) => (
               <div key={key} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 capitalize">
-                    {key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}
+                    {key
+                      .replace(/([A-Z])/g, " $1")
+                      .replace(/_/g, " ")
+                      .trim()}
                   </label>
                 </div>
                 <div>
@@ -585,11 +632,9 @@ export default function IntegrationSettings({
               </div>
             ))}
           </div>
-          
+
           <div className="mt-6">
-            <button
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
+            <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
               Update Credentials
             </button>
           </div>
@@ -597,55 +642,107 @@ export default function IntegrationSettings({
       )}
 
       {/* Data Mapping Tab */}
-      {activeTab === 'mapping' && (
+      {activeTab === "mapping" && (
         <div>
           <p className="text-gray-500 dark:text-gray-400 mb-4">
-            Configure how data is mapped between BoostFlow and {integration.provider}.
+            Configure how data is mapped between BoostFlow and{" "}
+            {integration.provider}.
           </p>
-          
+
           <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
             <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-800">
                 <tr>
-                  <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-6">BoostFlow Field</th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">External Field</th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Transformation</th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Required</th>
+                  <th
+                    scope="col"
+                    className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-6"
+                  >
+                    BoostFlow Field
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white"
+                  >
+                    External Field
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white"
+                  >
+                    Transformation
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white"
+                  >
+                    Required
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
                 <tr>
-                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">Title</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">name</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">None</td>
+                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">
+                    Title
+                  </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
-                    <input type="checkbox" defaultChecked onChange={() => {}} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    name
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    None
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    <input
+                      type="checkbox"
+                      defaultChecked
+                      onChange={() => {}}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
                   </td>
                 </tr>
                 <tr>
-                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">Description</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">description</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">None</td>
+                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">
+                    Description
+                  </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
-                    <input type="checkbox" defaultChecked onChange={() => {}} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    description
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    None
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    <input
+                      type="checkbox"
+                      defaultChecked
+                      onChange={() => {}}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
                   </td>
                 </tr>
                 <tr>
-                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">Due Date</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">due_date</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">Date format</td>
+                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">
+                    Due Date
+                  </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
-                    <input type="checkbox" defaultChecked onChange={() => {}} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    due_date
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    Date format
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    <input
+                      type="checkbox"
+                      defaultChecked
+                      onChange={() => {}}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
-          
+
           <div className="mt-6 flex justify-end">
-            <button
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
+            <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
               Save Mapping
             </button>
           </div>
@@ -653,52 +750,92 @@ export default function IntegrationSettings({
       )}
 
       {/* Sync History Tab */}
-      {activeTab === 'history' && (
+      {activeTab === "history" && (
         <div>
           <p className="text-gray-500 dark:text-gray-400 mb-4">
             View recent synchronization history with {integration.provider}.
           </p>
-          
+
           <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
             <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-800">
                 <tr>
-                  <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-6">Date</th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Status</th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Items</th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Duration</th>
+                  <th
+                    scope="col"
+                    className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-6"
+                  >
+                    Date
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white"
+                  >
+                    Status
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white"
+                  >
+                    Items
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white"
+                  >
+                    Duration
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
                 <tr>
-                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">{new Date().toLocaleString()}</td>
+                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">
+                    {new Date().toLocaleString()}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                       Success
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">42 items</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">3.2 seconds</td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    42 items
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    3.2 seconds
+                  </td>
                 </tr>
                 <tr>
-                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">{new Date(Date.now() - 6 * 60 * 60 * 1000).toLocaleString()}</td>
+                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">
+                    {new Date(Date.now() - 6 * 60 * 60 * 1000).toLocaleString()}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                       Success
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">38 items</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">2.8 seconds</td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    38 items
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    2.8 seconds
+                  </td>
                 </tr>
                 <tr>
-                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">{new Date(Date.now() - 12 * 60 * 60 * 1000).toLocaleString()}</td>
+                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-6">
+                    {new Date(
+                      Date.now() - 12 * 60 * 60 * 1000
+                    ).toLocaleString()}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
                       Failed
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">0 items</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">1.5 seconds</td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    0 items
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    1.5 seconds
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -707,4 +844,4 @@ export default function IntegrationSettings({
       )}
     </div>
   );
-};
+}

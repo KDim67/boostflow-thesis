@@ -1,8 +1,12 @@
-import { UserProfile } from '../firebase/userProfileService';
+import { UserProfile } from "../firebase/userProfileService";
 
-export type SubscriptionPlan = 'free' | 'starter' | 'professional' | 'enterprise';
+export type SubscriptionPlan =
+  | "free"
+  | "starter"
+  | "professional"
+  | "enterprise";
 
-export type OrganizationRole = 'owner' | 'admin' | 'member' | 'viewer';
+export type OrganizationRole = "owner" | "admin" | "member" | "viewer";
 
 export interface Organization {
   id: string;
@@ -48,7 +52,7 @@ export interface OrganizationMembership {
   role: OrganizationRole;
   joinedAt: any;
   invitedBy?: string;
-  status: 'active' | 'invited' | 'suspended';
+  status: "active" | "invited" | "suspended";
   userProfile?: UserProfile;
 }
 
@@ -73,7 +77,6 @@ export interface Project {
     productivityScore: number;
   };
 }
-
 
 export interface OrganizationWithDetails extends Organization {
   memberCount: number;

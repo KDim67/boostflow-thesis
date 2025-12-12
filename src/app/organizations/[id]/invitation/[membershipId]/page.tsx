@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 
 /**
  * TeamInvitation component handles the redirection logic for team invitation links.
@@ -22,7 +22,7 @@ export default function TeamInvitation() {
       router.replace(`/invitation/${memId}`);
     } else {
       // If no membership ID is found, redirect to the organizations page.
-      router.replace('/organizations');
+      router.replace("/organizations");
     }
   }, [memId, router]); // memId and router ensure the effect runs when these values change.
 

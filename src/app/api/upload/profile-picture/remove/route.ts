@@ -1,20 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { deleteFileByUrl, BUCKETS } from '@/lib/minio/client';
-import { updateUserProfile, getUserProfile } from '@/lib/firebase/userProfileService';
-import { getAuth } from 'firebase-admin/auth';
-import { adminApp } from '@/lib/firebase/admin';
+import { NextRequest, NextResponse } from "next/server";
+import { deleteFileByUrl, BUCKETS } from "@/lib/minio/client";
+import {
+  updateUserProfile,
+  getUserProfile,
+} from "@/lib/firebase/userProfileService";
+import { getAuth } from "firebase-admin/auth";
+import { adminApp } from "@/lib/firebase/admin";
 
 const auth = getAuth(adminApp);
 
 export async function DELETE(request: NextRequest) {
   try {
     // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const token = authHeader.split('Bearer ')[1];
+    const token = authHeader.split("Bearer ")[1];
     const decodedToken = await auth.verifyIdToken(token);
     const userId = decodedToken.uid;
 
@@ -24,7 +27,7 @@ export async function DELETE(request: NextRequest) {
 
     // Update user profile to remove picture URL
     await updateUserProfile(userId, {
-      profilePicture: '',
+      profilePicture: "",
       updatedAt: new Date(),
     });
 
@@ -35,12 +38,12 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Profile picture removed successfully',
+      message: "Profile picture removed successfully",
     });
   } catch (error) {
-    console.error('Error removing profile picture:', error);
+    console.error("Error removing profile picture:", error);
     return NextResponse.json(
-      { error: 'Failed to remove profile picture' },
+      { error: "Failed to remove profile picture" },
       { status: 500 }
     );
   }
