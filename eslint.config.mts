@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 import pluginReact from "eslint-plugin-react";
+import eslintConfigPrettier from "eslint-config-prettier";
 import { defineConfig } from "eslint/config";
 
 export default defineConfig([
@@ -11,6 +12,21 @@ export default defineConfig([
     extends: ["js/recommended"],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
   },
+  {
+    ignores: ["node_modules/", ".next/", "out/", "build/", "public/"],
+  },
   tseslint.configs.recommended,
   pluginReact.configs.flat.recommended,
+  // Disable conflict rules with Prettier
+  eslintConfigPrettier,
+  {
+    rules: {
+      // Relaxed Rules
+      "react/react-in-jsx-scope": "off",
+      "react/prop-types": "off",
+      "@typescript-eslint/no-unused-vars": "warn",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "react/no-unescaped-entities": "off",
+    },
+  },
 ]);

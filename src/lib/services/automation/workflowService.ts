@@ -685,17 +685,19 @@ async function executeWorkflowStep(
       // Trigger steps just initiate the workflow, no processing needed
       break;
 
-    case "condition":
+    case "condition": {
       // Evaluate condition and store result for potential use by subsequent steps
       const conditionResult = await evaluateCondition(step, context.data);
       context.data.lastConditionResult = conditionResult;
       break;
+    }
 
-    case "action":
+    case "action": {
       // Execute action and merge results into context data
       const actionResult = await executeAction(step, context.data);
       context.data = { ...context.data, ...actionResult };
       break;
+    }
 
     default:
       throw new Error(`Unknown step type: ${step.type}`);

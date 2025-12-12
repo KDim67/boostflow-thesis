@@ -298,7 +298,7 @@ export const getRecentActivityLogs = async (
 ): Promise<ActivityLogEntry[]> => {
   try {
     // Build query constraints dynamically based on parameters
-    let queryConstraints = [];
+    const queryConstraints = [];
 
     // Add severity filter if specified
     if (filterSeverity) {

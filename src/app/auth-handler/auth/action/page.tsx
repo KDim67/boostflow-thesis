@@ -48,7 +48,7 @@ function EmailActionHandlerContent() {
   const handleAction = async (actionMode: string, code: string) => {
     try {
       switch (actionMode) {
-        case "verifyEmail":
+        case "verifyEmail": {
           await applyActionCode(auth, code);
 
           // Check if user is logged in and update their profile in database
@@ -80,8 +80,9 @@ function EmailActionHandlerContent() {
             router.push("/login?verified=true");
           }, 3000);
           break;
+        }
 
-        case "verifyAndChangeEmail":
+        case "verifyAndChangeEmail": {
           await applyActionCode(auth, code);
 
           // Check if user is logged in and update their profile in database
@@ -113,8 +114,9 @@ function EmailActionHandlerContent() {
             router.push("/login?verified=true");
           }, 3000);
           break;
+        }
 
-        case "resetPassword":
+        case "resetPassword": {
           // Verify the code first
           const email = await verifyPasswordResetCode(auth, code);
           setResult({
@@ -125,8 +127,9 @@ function EmailActionHandlerContent() {
           setActionCode(code);
           setShowPasswordForm(true);
           break;
+        }
 
-        case "recoverEmail":
+        case "recoverEmail": {
           // Handle email recovery
           const info = await checkActionCode(auth, code);
           await applyActionCode(auth, code);
@@ -135,6 +138,7 @@ function EmailActionHandlerContent() {
             message: "Your email change has been reverted successfully.",
           });
           break;
+        }
 
         default:
           setResult({
@@ -236,11 +240,10 @@ function EmailActionHandlerContent() {
 
         {result && (
           <div
-            className={`rounded-md p-4 ${
-              result.success
+            className={`rounded-md p-4 ${result.success
                 ? "bg-green-50 border border-green-200"
                 : "bg-red-50 border border-red-200"
-            }`}
+              }`}
           >
             <div className="flex">
               <div className="flex-shrink-0">
@@ -272,9 +275,8 @@ function EmailActionHandlerContent() {
               </div>
               <div className="ml-3">
                 <p
-                  className={`text-sm font-medium ${
-                    result.success ? "text-green-800" : "text-red-800"
-                  }`}
+                  className={`text-sm font-medium ${result.success ? "text-green-800" : "text-red-800"
+                    }`}
                 >
                   {result.message}
                 </p>
