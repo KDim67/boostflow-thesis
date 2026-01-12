@@ -27,6 +27,7 @@ const nextConfig: NextConfig = {
     return config;
   },
   serverExternalPackages: ["firebase-admin", "minio"],
+  output: "standalone",
   experimental: {},
   transpilePackages: [
     "google-gax",

@@ -1,0 +1,41 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo "${YELLOW}Running pre-commit checks...${NC}"
+
+# 1. Run GitLeaks (if installed)
+if command -v gitleaks &> /dev/null; then
+  echo "${YELLOW}Scanning for secrets with GitLeaks...${NC}"
+  if ! gitleaks protect --staged --verbose; then
+    echo "${RED}GitLeaks detected secrets! Please remove them before committing.${NC}"
+    exit 1
+  fi
+  echo "${GREEN}GitLeaks: No secrets detected${NC}"
+else
+  echo "${YELLOW}GitLeaks not installed. Skipping secret scanning.${NC}"
+  echo "${YELLOW}   Install from: https://github.com/gitleaks/gitleaks/releases. ${NC}"
+fi
+
+# 2. Run lint-staged (ESLint + Prettier)
+echo "${YELLOW}Running ESLint and Prettier on staged files...${NC}"
+if ! npx lint-staged; then
+  echo "${RED}Linting/formatting failed! Please fix the issues.${NC}"
+  exit 1
+fi
+echo "${GREEN}Linting and formatting passed${NC}"
+
+# 3. Run TypeScript type checking
+echo "${YELLOW}Running TypeScript type checking...${NC}"
+if ! npm run type-check; then
+  echo "${RED}TypeScript type checking failed! Please fix the type errors.${NC}"
+  exit 1
+fi
+echo "${GREEN}TypeScript type checking passed${NC}"
+
+echo "${GREEN}All pre-commit checks passed!${NC}"

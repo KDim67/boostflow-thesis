@@ -1,0 +1,77 @@
+# GitLeaks Configuration for BoostFlow
+title = "BoostFlow GitLeaks Configuration"
+
+[extend]
+useDefault = true
+
+# Custom rules for Firebase, SendGrid, MinIO, and other secrets
+[[rules]]
+id = "firebase-api-key"
+description = "Firebase API Key"
+regex = '''(?i)(firebase[_-]?api[_-]?key|next_public_firebase_api_key)\s*[:=]\s*['\"]?(AIza[0-9A-Za-z\-_]{35})['\"]?'''
+tags = ["firebase", "api-key"]
+
+[[rules]]
+id = "google-maps-api-key"
+description = "Google Maps API Key"
+regex = '''(?i)(google[_-]?maps[_-]?api[_-]?key|next_public_google_maps_api_key)\s*[:=]\s*['\"]?(AIza[0-9A-Za-z\-_]{35})['\"]?'''
+tags = ["google", "api-key"]
+
+[[rules]]
+id = "gemini-api-key"
+description = "Gemini API Key"
+regex = '''(?i)(gemini[_-]?api[_-]?key)\s*[:=]\s*['\"]?([A-Za-z0-9_\-]{39})['\"]?'''
+tags = ["gemini", "api-key"]
+
+[[rules]]
+id = "sendgrid-api-key"
+description = "SendGrid API Key"
+regex = '''(?i)(sendgrid[_-]?api[_-]?key)\s*[:=]\s*['\"]?(SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43})['\"]?'''
+tags = ["sendgrid", "api-key"]
+
+[[rules]]
+id = "github-oauth-secret"
+description = "GitHub OAuth Client Secret"
+regex = '''(?i)(github[_-]?client[_-]?secret|next_public_github_client_secret)\s*[:=]\s*['\"]?([a-f0-9]{40})['\"]?'''
+tags = ["github", "oauth", "secret"]
+
+[[rules]]
+id = "google-oauth-secret"
+description = "Google OAuth Client Secret"
+regex = '''(?i)(google[_-]?client[_-]?secret|next_public_google_client_secret)\s*[:=]\s*['\"]?([A-Za-z0-9_\-]{24,})['\"]?'''
+tags = ["google", "oauth", "secret"]
+
+[[rules]]
+id = "minio-credentials"
+description = "MinIO Root User/Password"
+regex = '''(?i)(minio[_-]?root[_-]?(user|password))\s*[:=]\s*['\"]?([A-Za-z0-9_\-@!#$%^&*]{8,})['\"]?'''
+tags = ["minio", "credentials"]
+
+[[rules]]
+id = "firebase-service-account"
+description = "Firebase Service Account Key (JSON)"
+regex = '''(?i)(firebase[_-]?service[_-]?account[_-]?key)\s*[:=]\s*['\"]?(\{.*private_key.*\})['\"]?'''
+tags = ["firebase", "service-account"]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)(api[_-]?key|apikey)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-]{32,})['\"]?'''
+tags = ["api-key", "generic"]
+
+# Allowlist for false positives
+[allowlist]
+description = "Allowlist for false positives"
+paths = [
+  '''\.env\.example$''',
+  '''\.env\.template$''',
+  '''README\.md$''',
+  '''\.gitleaks\.toml$''',
+]
+
+regexes = [
+  '''EXAMPLE_API_KEY''',
+  '''YOUR_API_KEY_HERE''',
+  '''<YOUR_.*>''',
+  '''placeholder''',
+]

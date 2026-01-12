@@ -13,7 +13,14 @@ export default defineConfig([
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
   },
   {
-    ignores: ["node_modules/", ".next/", "out/", "build/", "public/"],
+    ignores: [
+      "node_modules/",
+      ".next/",
+      "out/",
+      "build/",
+      "public/",
+      "test-*.js",
+    ],
   },
   tseslint.configs.recommended,
   pluginReact.configs.flat.recommended,
@@ -21,7 +28,6 @@ export default defineConfig([
   eslintConfigPrettier,
   {
     rules: {
-      // Relaxed Rules
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "@typescript-eslint/no-unused-vars": "warn",
