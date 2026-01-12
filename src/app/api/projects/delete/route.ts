@@ -74,7 +74,11 @@ export async function DELETE(request: NextRequest) {
           await deleteFileByUrl(document.url, BUCKETS.PROJECT_DOCUMENTS);
         }
       } catch (docError) {
-        console.error(`Error deleting document ${document.id}:`, docError);
+        console.error({
+          msg: "Error deleting document",
+          documentId: document.id,
+          error: docError,
+        });
         // Continue with other documents even if one fails
       }
     }

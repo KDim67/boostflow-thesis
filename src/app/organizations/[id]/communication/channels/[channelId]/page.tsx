@@ -230,10 +230,11 @@ export default function ChannelPage() {
             const profile = await getUserProfile(authorId);
             return { [authorId]: profile };
           } catch (error) {
-            console.error(
-              `Error fetching profile for user ${authorId}:`,
-              error
-            );
+            console.error({
+              msg: "Error fetching profile for user",
+              authorId,
+              error,
+            });
             // Return null profile to prevent UI breaks
             return { [authorId]: null };
           }

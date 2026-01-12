@@ -276,7 +276,7 @@ export const syncIntegration = async (
       errorMessage: error instanceof Error ? error.message : String(error),
     });
 
-    console.error(`Error syncing integration ${integrationId}:`, error);
+    console.error({ msg: "Error syncing integration", integrationId, error });
 
     return {
       success: false,

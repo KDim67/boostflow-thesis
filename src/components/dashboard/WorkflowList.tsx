@@ -100,7 +100,11 @@ export default function WorkflowList({
               userNameMap[userId] = userId;
             }
           } catch (error) {
-            console.error(`Error fetching user profile for ${userId}:`, error);
+            console.error({
+              msg: "Error fetching user profile",
+              userId,
+              error,
+            });
             userNameMap[userId] = userId;
           }
         })

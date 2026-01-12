@@ -86,10 +86,11 @@ export default function UserManagementPage() {
               };
             } catch (error) {
               // If fetching organizations fails, continue with empty array
-              console.error(
-                `Error fetching organizations for user ${user.uid}:`,
-                error
-              );
+              console.error({
+                msg: "Error fetching organizations for user",
+                userId: user.uid,
+                error,
+              });
               return {
                 ...user,
                 organizations: [],

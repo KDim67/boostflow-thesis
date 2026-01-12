@@ -639,10 +639,10 @@ function TaskModal({
       // Close modal on successful submission
       onClose();
     } catch (error) {
-      console.error(
-        `Error ${isEditing ? "updating" : "creating"} task:`,
-        error
-      );
+      console.error({
+        msg: isEditing ? "Error updating task" : "Error creating task",
+        error,
+      });
     } finally {
       setIsSubmitting(false);
     }

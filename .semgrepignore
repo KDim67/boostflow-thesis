@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.next/
+*.test.tsx
+*.test.ts
+*.spec.tsx
+*.spec.ts
+__tests__/

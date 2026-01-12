@@ -74,7 +74,11 @@ export async function POST(request: NextRequest) {
     // Handle token exchange failure
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`OAuth token exchange failed for ${provider}:`, errorText);
+      console.error({
+        msg: "OAuth token exchange failed",
+        provider,
+        errorText,
+      });
       return NextResponse.json(
         { error: `Token exchange failed: ${response.status}` },
         { status: response.status }

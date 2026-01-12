@@ -887,7 +887,7 @@ export default function OrganizationMembers() {
               </tr>
               <tr>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                  View projects & documents
+                  View projects &amp; documents
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center">
                   <CheckIcon />
@@ -972,7 +972,7 @@ export default function OrganizationMembers() {
               </tr>
               <tr>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                  Access automation & workflows
+                  Access automation &amp; workflows
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center">
                   <CheckIcon />

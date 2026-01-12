@@ -69,18 +69,19 @@ export class Logger {
     };
 
     // Route to appropriate console method based on log level
+    const logData = { service: entry.service, msg: message, ...context };
     switch (level) {
       case LogLevel.DEBUG:
-        console.debug(`[${entry.service}] ${message}`, context || "");
+        console.debug(logData);
         break;
       case LogLevel.INFO:
-        console.info(`[${entry.service}] ${message}`, context || "");
+        console.info(logData);
         break;
       case LogLevel.WARN:
-        console.warn(`[${entry.service}] ${message}`, context || "");
+        console.warn(logData);
         break;
       case LogLevel.ERROR:
-        console.error(`[${entry.service}] ${message}`, context || "");
+        console.error(logData);
         break;
     }
   }

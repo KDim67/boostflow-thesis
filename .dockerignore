@@ -54,3 +54,8 @@ __tests__
 Dockerfile
 docker-compose.yaml
 .dockerignore
+
+.env
+.env.local
+.env.production
+build_secrets.env

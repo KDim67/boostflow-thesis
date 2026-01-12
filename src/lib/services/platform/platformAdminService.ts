@@ -133,7 +133,7 @@ export const getUsersByRole = async (
         }) as PlatformUser
     );
   } catch (error) {
-    console.error(`Error fetching users with role ${role}:`, error);
+    console.error({ msg: "Error fetching users with role", role, error });
     throw error;
   }
 };
@@ -155,7 +155,7 @@ export const updateUserRole = async (
       updatedAt: new Date(), // Track when role was changed
     });
   } catch (error) {
-    console.error(`Error updating user ${uid} role:`, error);
+    console.error({ msg: "Error updating user role", uid, error });
     throw error;
   }
 };
@@ -185,7 +185,7 @@ export const suspendUser = async (
       details: { reason },
     });
   } catch (error) {
-    console.error(`Error suspending user ${uid}:`, error);
+    console.error({ msg: "Error suspending user", uid, error });
     throw error;
   }
 };
@@ -214,7 +214,7 @@ export const addSecurityLog = async (
       });
     }
   } catch (error) {
-    console.error(`Error adding security log for user ${uid}:`, error);
+    console.error({ msg: "Error adding security log for user", uid, error });
     throw error;
   }
 };
@@ -265,7 +265,7 @@ export const getOrganizationById = async (
 
     return null; // Organization not found
   } catch (error) {
-    console.error(`Error fetching organization ${orgId}:`, error);
+    console.error({ msg: "Error fetching organization", orgId, error });
     throw error;
   }
 };
@@ -287,7 +287,7 @@ export const updateOrganizationStatus = async (
       updatedAt: new Date(), // Track when status was changed
     });
   } catch (error) {
-    console.error(`Error updating organization ${orgId} status:`, error);
+    console.error({ msg: "Error updating organization status", orgId, error });
     throw error;
   }
 };
@@ -309,7 +309,7 @@ export const updateOrganizationPlan = async (
       updatedAt: new Date(), // Track when plan was changed
     });
   } catch (error) {
-    console.error(`Error updating organization ${orgId} plan:`, error);
+    console.error({ msg: "Error updating organization plan", orgId, error });
     throw error;
   }
 };
@@ -427,7 +427,7 @@ export const approveContent = async (
       moderatedAt: new Date(), // Track when approval occurred
     });
   } catch (error) {
-    console.error(`Error approving content ${contentId}:`, error);
+    console.error({ msg: "Error approving content", contentId, error });
     throw error;
   }
 };
@@ -455,7 +455,7 @@ export const rejectContent = async (
       rejectionReason: reason, // Store reason for audit and user notification
     });
   } catch (error) {
-    console.error(`Error rejecting content ${contentId}:`, error);
+    console.error({ msg: "Error rejecting content", contentId, error });
     throw error;
   }
 };

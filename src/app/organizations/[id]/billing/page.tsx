@@ -420,7 +420,7 @@ export default function OrganizationBilling() {
       {/* Billing Header */}
       <div className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-700 rounded-xl p-6 shadow-md">
         <h1 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
-          Billing & Subscription
+          Billing &amp; Subscription
         </h1>
         <p className="text-gray-600 dark:text-gray-300">
           Manage your organization's subscription plan and billing information
