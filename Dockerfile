@@ -18,7 +18,9 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies (including dev deps needed for build)
-RUN npm ci
+# Also explicitly install the musl-specific Tailwind CSS oxide binary
+# since npm ci on Alpine doesn't always resolve the correct platform variant
+RUN npm ci && npm install @tailwindcss/oxide-linux-x64-musl
 
 # Copy source code
 COPY . .
