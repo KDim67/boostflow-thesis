@@ -7,12 +7,8 @@ import {
   updateUserProfile,
   deleteUserProfile,
 } from "@/lib/firebase/userProfileService";
-import { timestampToDate } from "@/lib/firebase/firestoreService";
-import { where, orderBy, QueryConstraint } from "firebase/firestore";
-import { queryDocuments } from "@/lib/firebase/firestoreService";
 import { PlatformRole, usePlatformAuth } from "@/lib/firebase/usePlatformAuth";
 import { getUserOrganizations } from "@/lib/firebase/organizationService";
-import { OrganizationWithDetails } from "@/lib/types/organization";
 
 import Badge from "@/components/Badge";
 
@@ -68,6 +64,26 @@ export default function UserManagementPage() {
 
   const { isSuperAdmin } = usePlatformAuth();
 
+  const loadUserOrganizationsForProfile = async (user: UserProfile) => {
+    try {
+      const userOrgs = await getUserOrganizations(user.uid);
+      return {
+        ...user,
+        organizations: userOrgs.map((org) => org.name),
+      };
+    } catch (error) {
+      console.error({
+        msg: "Error fetching organizations for user",
+        userId: user.uid,
+        error,
+      });
+      return {
+        ...user,
+        organizations: [],
+      };
+    }
+  };
+
   // Fetch all users and their associated organizations on component mount
   useEffect(() => {
     const fetchUsers = async () => {
@@ -77,34 +93,17 @@ export default function UserManagementPage() {
 
         // Enrich each user profile with their organization names
         const usersWithOrganizations = await Promise.all(
-          userProfiles.map(async (user) => {
-            try {
-              const userOrgs = await getUserOrganizations(user.uid);
-              return {
-                ...user,
-                organizations: userOrgs.map((org) => org.name),
-              };
-            } catch (error) {
-              // If fetching organizations fails, continue with empty array
-              console.error({
-                msg: "Error fetching organizations for user",
-                userId: user.uid,
-                error,
-              });
-              return {
-                ...user,
-                organizations: [],
-              };
-            }
-          })
+          userProfiles.map(loadUserOrganizationsForProfile)
         );
 
         // Extract unique organization names for filter dropdown
         const orgSet = new Set<string>();
-        usersWithOrganizations.forEach((user) => {
-          user.organizations.forEach((org) => orgSet.add(org));
-        });
-        setAllOrganizations(Array.from(orgSet).sort());
+        usersWithOrganizations
+          .flatMap((user) => user.organizations)
+          .forEach((org) => orgSet.add(org));
+        setAllOrganizations(
+          Array.from(orgSet).sort((a, b) => a.localeCompare(b))
+        );
 
         setUsers(usersWithOrganizations);
         setFilteredUsers(usersWithOrganizations);
@@ -260,19 +259,24 @@ export default function UserManagementPage() {
     if (!currentUser) return;
 
     try {
-      const updateData: any = {
+      const updateData: {
+        suspended: boolean;
+        updatedAt: Date;
+        suspensionReason?: string | null;
+        suspendedAt?: Date | null;
+      } = {
         suspended: !currentUser.suspended,
         updatedAt: new Date(),
       };
 
       // Add suspension metadata when suspending
-      if (!currentUser.suspended) {
-        updateData.suspensionReason = suspensionReason || "No reason provided";
-        updateData.suspendedAt = new Date();
-      } else {
+      if (currentUser.suspended) {
         // Clear suspension metadata when unsuspending
         updateData.suspensionReason = null;
         updateData.suspendedAt = null;
+      } else {
+        updateData.suspensionReason = suspensionReason || "No reason provided";
+        updateData.suspendedAt = new Date();
       }
 
       await updateUserProfile(currentUser.uid, updateData);
@@ -299,11 +303,21 @@ export default function UserManagementPage() {
    * Format timestamp into human-readable "time ago" format.
    * Handles both Firestore timestamps and regular Date objects.
    */
-  const formatLastActive = (timestamp: any) => {
+  const formatLastActive = (timestamp: unknown) => {
     if (!timestamp) return "Never";
 
     // Handle Firestore timestamp or regular Date
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    let date: Date;
+    if (
+      timestamp &&
+      typeof timestamp === "object" &&
+      "toDate" in timestamp &&
+      typeof (timestamp as { toDate: () => Date }).toDate === "function"
+    ) {
+      date = (timestamp as { toDate: () => Date }).toDate();
+    } else {
+      date = new Date(timestamp as string | number | Date);
+    }
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -380,10 +394,14 @@ export default function UserManagementPage() {
         <div className="p-5">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="search-users"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Search
               </label>
               <input
+                id="search-users"
                 type="text"
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                 placeholder="Search by name or email"
@@ -392,10 +410,14 @@ export default function UserManagementPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="role-filter"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Role
               </label>
               <select
+                id="role-filter"
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
@@ -407,10 +429,14 @@ export default function UserManagementPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="status-filter"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Status
               </label>
               <select
+                id="status-filter"
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -422,10 +448,14 @@ export default function UserManagementPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="organization-filter"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Organization
               </label>
               <select
+                id="organization-filter"
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                 value={organizationFilter}
                 onChange={(e) => setOrganizationFilter(e.target.value)}
@@ -477,10 +507,14 @@ export default function UserManagementPage() {
             Users
           </h2>
           <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label
+              htmlFor="pageSizeSelect"
+              className="text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
               Show:
             </label>
             <select
+              id="pageSizeSelect"
               className="border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-sm"
               value={pageSize}
               onChange={(e) => handlePageSizeChange(Number(e.target.value))}
@@ -495,18 +529,20 @@ export default function UserManagementPage() {
             </span>
           </div>
         </div>
-        {loading ? (
+        {loading && (
           <div className="p-8 text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
             <p className="mt-2 text-gray-500 dark:text-gray-400">
               Loading users...
             </p>
           </div>
-        ) : error ? (
+        )}
+        {!loading && error && (
           <div className="p-8 text-center text-red-500 dark:text-red-400">
             <p>{error}</p>
           </div>
-        ) : (
+        )}
+        {!loading && !error && (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-900/50">
@@ -558,87 +594,14 @@ export default function UserManagementPage() {
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {paginatedUsers.length > 0 ? (
                   paginatedUsers.map((user) => (
-                    <tr key={user.uid}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500 dark:text-indigo-400 font-bold">
-                            {user.displayName
-                              ? user.displayName.charAt(0)
-                              : user.email.charAt(0)}
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              {user.displayName || user.email.split("@")[0]}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {user.email}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {user.platformRole || "User"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <Badge
-                          type="status"
-                          value={
-                            user.suspended
-                              ? "suspended"
-                              : !user.updatedAt
-                                ? "inactive"
-                                : "active"
-                          }
-                          size="sm"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {user.organizations.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {user.organizations
-                              .slice(0, 2)
-                              .map((org, index) => (
-                                <span
-                                  key={index}
-                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200"
-                                >
-                                  {org}
-                                </span>
-                              ))}
-                            {user.organizations.length > 2 && (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-                                +{user.organizations.length - 2} more
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          "Not specified"
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {formatLastActive(user.updatedAt)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => handleEditUser(user)}
-                          className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 mr-3"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleSuspendUser(user)}
-                          className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-900 dark:hover:text-yellow-300 mr-3"
-                        >
-                          {user.suspended ? "Unsuspend" : "Suspend"}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(user)}
-                          className="text-red-700 dark:text-red-500 hover:text-red-900 dark:hover:text-red-300 font-medium"
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
+                    <UserRow
+                      key={user.uid}
+                      user={user}
+                      formatLastActive={formatLastActive}
+                      handleEditUser={handleEditUser}
+                      handleSuspendUser={handleSuspendUser}
+                      handleDeleteUser={handleDeleteUser}
+                    />
                   ))
                 ) : (
                   <tr>
@@ -743,8 +706,14 @@ export default function UserManagementPage() {
             <h2 className="text-xl font-semibold mb-4">Edit User</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Name</label>
+                <label
+                  htmlFor="edit-name"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Name
+                </label>
                 <input
+                  id="edit-name"
                   type="text"
                   className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                   value={editedName || currentUser.displayName || ""}
@@ -752,8 +721,14 @@ export default function UserManagementPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
+                <label
+                  htmlFor="edit-email"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Email
+                </label>
                 <input
+                  id="edit-email"
                   type="email"
                   className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                   value={editedEmail || currentUser.email}
@@ -761,9 +736,15 @@ export default function UserManagementPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Role</label>
+                <label
+                  htmlFor="edit-role"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Role
+                </label>
                 <select
-                  className={`w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 ${!isSuperAdmin ? "opacity-50 cursor-not-allowed" : ""}`}
+                  id="edit-role"
+                  className={`w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 ${isSuperAdmin ? "" : "opacity-50 cursor-not-allowed"}`}
                   value={editedRole}
                   onChange={(e) => setEditedRole(e.target.value)}
                   disabled={!isSuperAdmin}
@@ -811,10 +792,14 @@ export default function UserManagementPage() {
             </p>
             {!currentUser.suspended && (
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">
+                <label
+                  htmlFor="suspension-reason"
+                  className="block text-sm font-medium mb-1"
+                >
                   Reason for suspension (optional)
                 </label>
                 <textarea
+                  id="suspension-reason"
                   className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                   rows={3}
                   value={suspensionReason}
@@ -897,3 +882,90 @@ export default function UserManagementPage() {
     </div>
   );
 }
+
+const UserRow = ({
+  user,
+  formatLastActive,
+  handleEditUser,
+  handleSuspendUser,
+  handleDeleteUser,
+}: any) => {
+  const getStatusValue = () => {
+    if (user.suspended) return "suspended";
+    if (user.updatedAt) return "active";
+    return "inactive";
+  };
+  const statusValue = getStatusValue();
+
+  return (
+    <tr>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center">
+          <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500 dark:text-indigo-400 font-bold">
+            {user.displayName
+              ? user.displayName.charAt(0)
+              : user.email.charAt(0)}
+          </div>
+          <div className="ml-4">
+            <div className="text-sm font-medium text-gray-900 dark:text-white">
+              {user.displayName || user.email.split("@")[0]}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {user.email}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {user.platformRole || "User"}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <Badge type="status" value={statusValue} size="sm" />
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {user.organizations.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {user.organizations.slice(0, 2).map((org: string) => (
+              <span
+                key={org}
+                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200"
+              >
+                {org}
+              </span>
+            ))}
+            {user.organizations.length > 2 && (
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                +{user.organizations.length - 2} more
+              </span>
+            )}
+          </div>
+        ) : (
+          "Not specified"
+        )}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {formatLastActive(user.updatedAt)}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+        <button
+          onClick={() => handleEditUser(user)}
+          className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 mr-3"
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => handleSuspendUser(user)}
+          className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-900 dark:hover:text-yellow-300 mr-3"
+        >
+          {user.suspended ? "Unsuspend" : "Suspend"}
+        </button>
+        <button
+          onClick={() => handleDeleteUser(user)}
+          className="text-red-700 dark:text-red-500 hover:text-red-900 dark:hover:text-red-300 font-medium"
+        >
+          Remove
+        </button>
+      </td>
+    </tr>
+  );
+};

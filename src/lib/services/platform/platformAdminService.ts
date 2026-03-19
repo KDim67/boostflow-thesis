@@ -1,5 +1,4 @@
-import { admin, adminFirestore } from "@/lib/firebase/adminConfig";
-import { User } from "firebase/auth";
+import { adminFirestore } from "@/lib/firebase/adminConfig";
 import { PlatformRole } from "@/lib/firebase/usePlatformAuth";
 
 /**
@@ -62,7 +61,7 @@ export interface SecurityPolicy {
   name: string;
   description: string;
   enabled: boolean; // Whether policy is currently active
-  settings: Record<string, any>; // Policy-specific configuration parameters
+  settings: Record<string, unknown>; // Policy-specific configuration parameters
 }
 
 /**
@@ -73,7 +72,7 @@ export interface SecurityLogEntry {
   action: string; // Type of action performed (login, role_change, etc.)
   ip?: string; // IP address of the request
   userAgent?: string; // Browser/client information
-  details?: Record<string, any>; // Additional context-specific data
+  details?: Record<string, unknown>; // Additional context-specific data
 }
 
 /**

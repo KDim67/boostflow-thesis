@@ -2,7 +2,7 @@ import { Client } from "minio";
 
 const minioClient = new Client({
   endPoint: process.env.MINIO_ENDPOINT?.split(":")[0] || "localhost",
-  port: parseInt(process.env.MINIO_ENDPOINT?.split(":")[1] || "9000"),
+  port: Number.parseInt(process.env.MINIO_ENDPOINT?.split(":")[1] || "9000"),
   useSSL: false,
   accessKey: process.env.MINIO_ROOT_USER || "minioadmin",
   secretKey: process.env.MINIO_ROOT_PASSWORD || "minioadmin",
@@ -115,6 +115,41 @@ export async function uploadFile(
 }
 
 // Get presigned URL for file access
+export function parseExternalEndpoint(externalEndpoint: string) {
+  let endPoint: string;
+  let port: number;
+  let useSSL: boolean;
+
+  if (externalEndpoint.startsWith("https://")) {
+    useSSL = true;
+    const cleanEndpoint = externalEndpoint
+      .replace("https://", "")
+      .split("/")[0];
+    const parts = cleanEndpoint.split(":");
+    endPoint = parts[0];
+    port = parts[1] ? Number.parseInt(parts[1]) : 443;
+  } else if (externalEndpoint.startsWith("http://")) {
+    useSSL = false;
+    const cleanEndpoint = externalEndpoint.replace("http://", "").split("/")[0];
+    const parts = cleanEndpoint.split(":");
+    endPoint = parts[0];
+    port = parts[1] ? Number.parseInt(parts[1]) : 80;
+  } else {
+    // No protocol specified, assume https for production domains
+    useSSL = externalEndpoint.includes(".");
+    const parts = externalEndpoint.split("/")[0].split(":");
+    endPoint = parts[0];
+    if (parts[1]) {
+      port = Number.parseInt(parts[1]);
+    } else {
+      port = useSSL ? 443 : 80;
+    }
+  }
+
+  return { endPoint, port, useSSL };
+}
+
+// Get presigned URL for file access
 export async function getPresignedUrl(
   bucketName: string,
   fileName: string,
@@ -126,33 +161,8 @@ export async function getPresignedUrl(
 
     if (externalEndpoint && externalEndpoint !== "localhost:9000") {
       // Parse the external endpoint properly
-      let endPoint: string;
-      let port: number;
-      let useSSL: boolean;
-
-      if (externalEndpoint.startsWith("https://")) {
-        useSSL = true;
-        const cleanEndpoint = externalEndpoint
-          .replace("https://", "")
-          .split("/")[0];
-        const parts = cleanEndpoint.split(":");
-        endPoint = parts[0];
-        port = parts[1] ? parseInt(parts[1]) : 443;
-      } else if (externalEndpoint.startsWith("http://")) {
-        useSSL = false;
-        const cleanEndpoint = externalEndpoint
-          .replace("http://", "")
-          .split("/")[0];
-        const parts = cleanEndpoint.split(":");
-        endPoint = parts[0];
-        port = parts[1] ? parseInt(parts[1]) : 80;
-      } else {
-        // No protocol specified, assume https for production domains
-        useSSL = externalEndpoint.includes(".");
-        const parts = externalEndpoint.split("/")[0].split(":");
-        endPoint = parts[0];
-        port = parts[1] ? parseInt(parts[1]) : useSSL ? 443 : 80;
-      }
+      const { endPoint, port, useSSL } =
+        parseExternalEndpoint(externalEndpoint);
 
       // In production, create a new MinIO client with the external endpoint for presigned URLs
       // This ensures the signature is calculated with the correct host that will be used
@@ -207,9 +217,9 @@ export async function deleteFile(
 export async function listFiles(
   bucketName: string,
   prefix?: string
-): Promise<any[]> {
+): Promise<unknown[]> {
   try {
-    const files: any[] = [];
+    const files: unknown[] = [];
     const stream = minioClient.listObjects(bucketName, prefix, true);
 
     return new Promise((resolve, reject) => {
@@ -254,8 +264,7 @@ export function extractFileNameFromUrl(url: string): string | null {
     }
 
     return null;
-  } catch (error) {
-    console.error("Error extracting filename from URL:", error);
+  } catch {
     return null;
   }
 }

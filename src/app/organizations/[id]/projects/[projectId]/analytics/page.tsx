@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { useOrganization } from "@/lib/firebase/OrganizationProvider";
+
 import { useAuth } from "@/lib/firebase/useAuth";
 import { getDocument, queryDocuments } from "@/lib/firebase/firestoreService";
 import { getWorkflowsByProject } from "@/lib/services/automation/workflowService";
@@ -66,6 +66,141 @@ const timeframeOptions: TimeframeFilter[] = [
 ];
 
 /**
+ * Utility function to convert various date formats to Date objects
+ */
+const safeToDate = (dateField: unknown): Date | undefined => {
+  if (!dateField) return undefined;
+
+  // Handle Firestore Timestamp objects
+  const df = dateField as { toDate?: () => Date };
+  if (typeof df.toDate === "function") {
+    return df.toDate();
+  }
+  // Handle native Date objects
+  if (dateField instanceof Date) {
+    return dateField;
+  }
+  // Handle string dates with validation
+  if (typeof dateField === "string") {
+    const parsed = new Date(dateField);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  return undefined;
+};
+
+/**
+ * Calculates the number of team members associated with a project, using
+ * task assignees or project members as fallbacks if direct team membership fails.
+ */
+const calculateTeamMembersCount = async (
+  projectId: string,
+  organizationId: string,
+  taskAnalytics: TaskAnalytics[],
+  project: Project | null
+): Promise<number> => {
+  let teamMembersCount = 0;
+  try {
+    // First attempt: query team collection (where team members are actually stored)
+    const teamMembers = await queryDocuments("team", [
+      where("projectId", "==", projectId),
+      where("organizationId", "==", organizationId),
+    ]);
+    teamMembersCount = teamMembers.length;
+
+    // Second attempt: if no team members found, check for task assignees
+    if (teamMembersCount === 0) {
+      const uniqueAssignees = new Set();
+      taskAnalytics.forEach((task) => {
+        if (task.assignee && task.assignee !== "Unassigned") {
+          uniqueAssignees.add(task.assignee);
+        }
+      });
+      teamMembersCount = uniqueAssignees.size;
+    }
+
+    // Final fallback: use project.members array if no team members found
+    if (teamMembersCount === 0 && project?.members) {
+      teamMembersCount = Array.isArray(project.members)
+        ? project.members.length
+        : 0;
+    }
+  } catch (error) {
+    console.error("Error fetching team members:", error);
+    // Fallback: count unique assignees from tasks
+    const uniqueAssignees = new Set();
+    taskAnalytics.forEach((task) => {
+      if (task.assignee && task.assignee !== "Unassigned") {
+        uniqueAssignees.add(task.assignee);
+      }
+    });
+    teamMembersCount = uniqueAssignees.size;
+
+    // If still no team members, use project.members array
+    if (teamMembersCount === 0 && project?.members) {
+      teamMembersCount = Array.isArray(project.members)
+        ? project.members.length
+        : 0;
+    }
+  }
+  return teamMembersCount;
+};
+
+/**
+ * Calculates core metrics such as completion times, productivity scores,
+ * and weekly progress based on task analytics.
+ */
+const calculateCoreMetrics = (
+  taskAnalytics: TaskAnalytics[],
+  activeWorkflows: number,
+  teamMembersCount: number
+): ProjectMetrics => {
+  // Calculate core task metrics from the analytics data
+  const totalTasks = taskAnalytics.length;
+  const completedTasks = taskAnalytics.filter(
+    (t) => t.status === "completed"
+  ).length;
+  const overdueTasks = taskAnalytics.filter(
+    (t) => t.dueDate && t.dueDate < new Date() && t.status !== "completed" // Tasks past due date and not completed
+  ).length;
+
+  // Calculate average completion time for tasks with time tracking data
+  const completedTasksWithTime = taskAnalytics.filter(
+    (t) => t.status === "completed" && t.timeSpent && t.timeSpent > 0
+  );
+  const avgCompletionTime =
+    completedTasksWithTime.length > 0
+      ? completedTasksWithTime.reduce((sum, t) => sum + (t.timeSpent || 0), 0) /
+        completedTasksWithTime.length /
+        60 // Convert minutes to hours
+      : 0;
+
+  // Calculate productivity score as percentage of completed vs total tasks
+  const productivityScore =
+    totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  // Generate weekly progress data - tasks completed each day for the past 7 days
+  const weeklyProgress = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - i)); // Calculate date for each day (6 days ago to today)
+    const dayTasks = taskAnalytics.filter(
+      (t) => t.completedAt?.toDateString() === date.toDateString() // Match tasks completed on this specific day
+    ).length;
+    return dayTasks;
+  });
+
+  return {
+    totalTasks,
+    completedTasks,
+    overdueTasks,
+    activeWorkflows,
+    teamMembers: teamMembersCount,
+    avgCompletionTime,
+    productivityScore,
+    weeklyProgress,
+  };
+};
+
+/**
  * Main analytics page component for displaying project performance metrics
  * Provides comprehensive analytics including task completion rates, team performance,
  * AI-generated insights, and interactive data visualizations
@@ -74,7 +209,6 @@ export default function ProjectAnalyticsPage() {
   // Next.js hooks for accessing URL parameters and authentication context
   const params = useParams();
   const { user } = useAuth();
-  const { activeOrganization } = useOrganization();
 
   // Core data state - project information and calculated metrics
   const [project, setProject] = useState<Project | null>(null);
@@ -194,27 +328,8 @@ export default function ProjectAnalyticsPage() {
           limit(100), // Limit to 100 most recent tasks for performance
         ]);
 
-        // Transform raw task data into analytics format with safe date handling
+        // Transform raw task data into analytics format with date handling
         const taskAnalytics: TaskAnalytics[] = tasksData.map((task) => {
-          // Utility function to safely convert various date formats to Date objects
-          const safeToDate = (dateField: any): Date | undefined => {
-            if (!dateField) return undefined;
-            // Handle Firestore Timestamp objects
-            if (typeof dateField.toDate === "function") {
-              return dateField.toDate();
-            }
-            // Handle native Date objects
-            if (dateField instanceof Date) {
-              return dateField;
-            }
-            // Handle string dates with validation
-            if (typeof dateField === "string") {
-              const parsed = new Date(dateField);
-              return isNaN(parsed.getTime()) ? undefined : parsed;
-            }
-            return undefined;
-          };
-
           // Return normalized task object with fallback values for missing data
           return {
             id: task.id,
@@ -241,108 +356,26 @@ export default function ProjectAnalyticsPage() {
         ).length;
 
         // Calculate team member count with fallback strategies
-        let teamMembersCount = 0;
-        try {
-          // First attempt: query team collection (where team members are actually stored)
-          const teamMembers = await queryDocuments("team", [
-            where("projectId", "==", projectId),
-            where("organizationId", "==", organizationId),
-          ]);
-          teamMembersCount = teamMembers.length;
-
-          // Second attempt: if no team members found, check for task assignees
-          if (teamMembersCount === 0) {
-            const uniqueAssignees = new Set();
-            taskAnalytics.forEach((task) => {
-              if (task.assignee && task.assignee !== "Unassigned") {
-                uniqueAssignees.add(task.assignee);
-              }
-            });
-            teamMembersCount = uniqueAssignees.size;
-          }
-
-          // Final fallback: use project.members array if no team members found
-          if (teamMembersCount === 0 && project?.members) {
-            teamMembersCount = Array.isArray(project.members)
-              ? project.members.length
-              : 0;
-          }
-        } catch (error) {
-          console.error("Error fetching team members:", error);
-          // Fallback: count unique assignees from tasks
-          const uniqueAssignees = new Set();
-          taskAnalytics.forEach((task) => {
-            if (task.assignee && task.assignee !== "Unassigned") {
-              uniqueAssignees.add(task.assignee);
-            }
-          });
-          teamMembersCount = uniqueAssignees.size;
-
-          // If still no team members, use project.members array
-          if (teamMembersCount === 0 && project?.members) {
-            teamMembersCount = Array.isArray(project.members)
-              ? project.members.length
-              : 0;
-          }
-        }
-
-        // Calculate core task metrics from the analytics data
-        const totalTasks = taskAnalytics.length;
-        const completedTasks = taskAnalytics.filter(
-          (t) => t.status === "completed"
-        ).length;
-        const overdueTasks = taskAnalytics.filter(
-          (t) => t.dueDate && t.dueDate < new Date() && t.status !== "completed" // Tasks past due date and not completed
-        ).length;
-
-        // Calculate average completion time for tasks with time tracking data
-        const completedTasksWithTime = taskAnalytics.filter(
-          (t) => t.status === "completed" && t.timeSpent && t.timeSpent > 0
+        const teamMembersCount = await calculateTeamMembersCount(
+          projectId,
+          organizationId,
+          taskAnalytics,
+          project
         );
-        const avgCompletionTime =
-          completedTasksWithTime.length > 0
-            ? completedTasksWithTime.reduce(
-                (sum, t) => sum + (t.timeSpent || 0),
-                0
-              ) /
-              completedTasksWithTime.length /
-              60 // Convert minutes to hours
-            : 0;
-
-        // Calculate productivity score as percentage of completed vs total tasks
-        const productivityScore =
-          totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
-        // Generate weekly progress data - tasks completed each day for the past 7 days
-        const weeklyProgress = Array.from({ length: 7 }, (_, i) => {
-          const date = new Date();
-          date.setDate(date.getDate() - (6 - i)); // Calculate date for each day (6 days ago to today)
-          const dayTasks = taskAnalytics.filter(
-            (t) =>
-              t.completedAt &&
-              t.completedAt.toDateString() === date.toDateString() // Match tasks completed on this specific day
-          ).length;
-          return dayTasks;
-        });
 
         // Compile current period metrics into a structured object
-        const projectMetrics: ProjectMetrics = {
-          totalTasks,
-          completedTasks,
-          overdueTasks,
+        const projectMetrics = calculateCoreMetrics(
+          taskAnalytics,
           activeWorkflows,
-          teamMembers: teamMembersCount,
-          avgCompletionTime,
-          productivityScore,
-          weeklyProgress,
-        };
+          teamMembersCount
+        );
 
         setMetrics(projectMetrics);
 
         // Determine if previous metrics should be updated (if missing or project is older than 24 hours)
         const shouldUpdatePreviousMetrics =
           !project.previousMetrics ||
-          Date.now() - new Date(project.createdAt).getTime() >
+          Date.now() - (safeToDate(project.createdAt)?.getTime() || 0) >
             24 * 60 * 60 * 1000;
 
         // Update previous metrics in Firestore for comparison purposes
@@ -410,7 +443,7 @@ export default function ProjectAnalyticsPage() {
       // Process and store AI-generated insights with unique IDs and timestamps
       const insights = await response.json();
       setAiInsights(
-        insights.map((insight: any, index: number) => ({
+        insights.map((insight: Record<string, unknown>, index: number) => ({
           id: `insight-${Date.now()}-${index}`, // Generate unique ID for each insight
           ...insight,
           timestamp: new Date(), // Add timestamp for tracking
@@ -796,23 +829,23 @@ export default function ProjectAnalyticsPage() {
                       >
                         <div className="flex items-start justify-between mb-3">
                           <div
-                            className={`w-4 h-4 rounded-full mt-0.5 shadow-sm ${
-                              insight.impact === "high"
-                                ? "bg-red-500"
-                                : insight.impact === "medium"
-                                  ? "bg-yellow-500"
-                                  : "bg-green-500"
-                            }`}
+                            className={`w-4 h-4 rounded-full mt-0.5 shadow-sm ${(() => {
+                              if (insight.impact === "high")
+                                return "bg-red-500";
+                              if (insight.impact === "medium")
+                                return "bg-yellow-500";
+                              return "bg-green-500";
+                            })()}`}
                             aria-label={`${insight.impact} impact`}
                           ></div>
                           <span
-                            className={`text-xs px-3 py-1 rounded-full font-semibold uppercase tracking-wide ${
-                              insight.type === "suggestion"
-                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-                                : insight.type === "warning"
-                                  ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
-                                  : "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                            }`}
+                            className={`text-xs px-3 py-1 rounded-full font-semibold uppercase tracking-wide ${(() => {
+                              if (insight.type === "suggestion")
+                                return "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300";
+                              if (insight.type === "warning")
+                                return "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300";
+                              return "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300";
+                            })()}`}
                           >
                             {insight.type}
                           </span>
@@ -835,334 +868,105 @@ export default function ProjectAnalyticsPage() {
           <div className="space-y-8">
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-200 dark:border-gray-700 hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 transform hover:-translate-y-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
-                      Total Tasks
-                    </p>
-                    <p
-                      className="text-3xl font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors"
-                      aria-label={`${metrics.totalTasks} total tasks`}
-                    >
-                      {metrics.totalTasks}
-                    </p>
-                  </div>
-                  <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg group-hover:shadow-blue-200 dark:group-hover:shadow-blue-900 transition-shadow">
-                    <svg
-                      className="w-7 h-7 text-white"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                      />
-                    </svg>
-                  </div>
-                </div>
-                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                  <div className="flex items-center text-sm">
-                    <div className="flex items-center">
-                      {(() => {
-                        const previousTotal =
-                          project.previousMetrics?.totalTasks || 0;
-                        const currentTotal = metrics.totalTasks;
-                        const change =
-                          previousTotal > 0
-                            ? ((currentTotal - previousTotal) / previousTotal) *
-                              100
-                            : 0;
-                        const isIncrease = change > 0;
-                        return (
-                          <>
-                            <svg
-                              className={`w-4 h-4 mr-1 ${previousTotal > 0 ? (isIncrease ? "text-green-500" : "text-red-500") : "text-gray-500"}`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d={
-                                  previousTotal > 0
-                                    ? isIncrease
-                                      ? "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                                      : "M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"
-                                    : "M5 12h14"
-                                }
-                              />
-                            </svg>
-                            <span
-                              className={`font-semibold ${previousTotal > 0 ? (isIncrease ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400") : "text-gray-600 dark:text-gray-400"}`}
-                            >
-                              {previousTotal > 0
-                                ? `${change > 0 ? "+" : ""}${Math.round(change)}%`
-                                : "N/A"}
-                            </span>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <span className="text-gray-500 dark:text-gray-400 ml-2">
-                      from last period
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-200 dark:border-gray-700 hover:shadow-lg hover:border-green-300 dark:hover:border-green-600 transition-all duration-300 transform hover:-translate-y-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
-                      Completed
-                    </p>
-                    <p
-                      className="text-3xl font-bold text-gray-900 dark:text-gray-100 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors"
-                      aria-label={`${metrics.completedTasks} completed tasks`}
-                    >
-                      {metrics.completedTasks}
-                    </p>
-                  </div>
-                  <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg group-hover:shadow-green-200 dark:group-hover:shadow-green-900 transition-shadow">
-                    <svg
-                      className="w-7 h-7 text-white"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                  </div>
-                </div>
-                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                  <div className="flex items-center text-sm">
-                    <div className="flex items-center">
-                      {(() => {
-                        const previousCompleted =
-                          project.previousMetrics?.completedTasks || 0;
-                        const currentCompleted = metrics.completedTasks;
-                        const change =
-                          previousCompleted > 0
-                            ? ((currentCompleted - previousCompleted) /
-                                previousCompleted) *
-                              100
-                            : 0;
-                        const isIncrease = change > 0;
-                        return (
-                          <>
-                            <svg
-                              className={`w-4 h-4 mr-1 ${previousCompleted > 0 ? (isIncrease ? "text-green-500" : "text-red-500") : "text-gray-500"}`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d={
-                                  previousCompleted > 0
-                                    ? isIncrease
-                                      ? "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                                      : "M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"
-                                    : "M5 12h14"
-                                }
-                              />
-                            </svg>
-                            <span
-                              className={`font-semibold ${previousCompleted > 0 ? (isIncrease ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400") : "text-gray-600 dark:text-gray-400"}`}
-                            >
-                              {previousCompleted > 0
-                                ? `${change > 0 ? "+" : ""}${Math.round(change)}%`
-                                : "N/A"}
-                            </span>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <span className="text-gray-500 dark:text-gray-400 ml-2">
-                      completion rate
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-200 dark:border-gray-700 hover:shadow-lg hover:border-red-300 dark:hover:border-red-600 transition-all duration-300 transform hover:-translate-y-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
-                      Overdue
-                    </p>
-                    <p
-                      className="text-3xl font-bold text-gray-900 dark:text-gray-100 group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors"
-                      aria-label={`${metrics.overdueTasks} overdue tasks`}
-                    >
-                      {metrics.overdueTasks}
-                    </p>
-                  </div>
-                  <div className="w-14 h-14 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg group-hover:shadow-red-200 dark:group-hover:shadow-red-900 transition-shadow">
-                    <svg
-                      className="w-7 h-7 text-white"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                  </div>
-                </div>
-                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                  <div className="flex items-center text-sm">
-                    <div className="flex items-center">
-                      {(() => {
-                        const previousOverdue =
-                          project.previousMetrics?.overdueTasks || 0;
-                        const currentOverdue = metrics.overdueTasks;
-                        const change =
-                          previousOverdue > 0
-                            ? ((currentOverdue - previousOverdue) /
-                                previousOverdue) *
-                              100
-                            : 0;
-                        const isDecrease = change < 0;
-                        return (
-                          <>
-                            <svg
-                              className={`w-4 h-4 mr-1 ${previousOverdue > 0 ? (isDecrease ? "text-green-500" : "text-red-500") : "text-gray-500"}`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d={
-                                  previousOverdue > 0
-                                    ? isDecrease
-                                      ? "M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"
-                                      : "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                                    : "M5 12h14"
-                                }
-                              />
-                            </svg>
-                            <span
-                              className={`font-semibold ${previousOverdue > 0 ? (isDecrease ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400") : "text-gray-600 dark:text-gray-400"}`}
-                            >
-                              {previousOverdue > 0
-                                ? `${Math.round(Math.abs(change))}%`
-                                : "N/A"}
-                            </span>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <span className="text-gray-500 dark:text-gray-400 ml-2">
-                      from last period
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-200 dark:border-gray-700 hover:shadow-lg hover:border-purple-300 dark:hover:border-purple-600 transition-all duration-300 transform hover:-translate-y-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
-                      Productivity
-                    </p>
-                    <p
-                      className="text-3xl font-bold text-gray-900 dark:text-gray-100 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors"
-                      aria-label={`${metrics.productivityScore}% productivity score`}
-                    >
-                      {metrics.productivityScore}%
-                    </p>
-                  </div>
-                  <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg group-hover:shadow-purple-200 dark:group-hover:shadow-purple-900 transition-shadow">
-                    <svg
-                      className="w-7 h-7 text-white"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                      />
-                    </svg>
-                  </div>
-                </div>
-                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                  <div className="flex items-center text-sm">
-                    <div className="flex items-center">
-                      {(() => {
-                        const previousProductivity =
-                          project.previousMetrics?.productivityScore || 0;
-                        const currentProductivity = metrics.productivityScore;
-                        const change =
-                          previousProductivity > 0
-                            ? currentProductivity - previousProductivity
-                            : 0;
-                        const isIncrease = change > 0;
-                        return (
-                          <>
-                            <svg
-                              className={`w-4 h-4 mr-1 ${isIncrease ? "text-green-500" : change < 0 ? "text-red-500" : "text-gray-500"}`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d={
-                                  isIncrease
-                                    ? "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                                    : change < 0
-                                      ? "M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"
-                                      : "M5 12h14"
-                                }
-                              />
-                            </svg>
-                            <span
-                              className={`font-semibold ${isIncrease ? "text-green-600 dark:text-green-400" : change < 0 ? "text-red-600 dark:text-red-400" : "text-gray-600 dark:text-gray-400"}`}
-                            >
-                              {previousProductivity > 0
-                                ? `${change > 0 ? "+" : ""}${Math.round(change)}%`
-                                : "N/A"}
-                            </span>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <span className="text-gray-500 dark:text-gray-400 ml-2">
-                      efficiency gain
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <KPICard
+                title="Total Tasks"
+                value={metrics.totalTasks}
+                icon={
+                  <svg
+                    className="w-7 h-7 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                    />
+                  </svg>
+                }
+                color="blue"
+                previousValue={project.previousMetrics?.totalTasks}
+                currentValue={metrics.totalTasks}
+                subtext="from last period"
+              />
+              <KPICard
+                title="Completed"
+                value={metrics.completedTasks}
+                icon={
+                  <svg
+                    className="w-7 h-7 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                }
+                color="green"
+                previousValue={project.previousMetrics?.completedTasks}
+                currentValue={metrics.completedTasks}
+                subtext="completion rate"
+              />
+              <KPICard
+                title="Overdue"
+                value={metrics.overdueTasks}
+                icon={
+                  <svg
+                    className="w-7 h-7 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                }
+                color="red"
+                previousValue={project.previousMetrics?.overdueTasks}
+                currentValue={metrics.overdueTasks}
+                isDecreasePositive={true}
+                changeType="percentage_abs"
+                subtext="from last period"
+              />
+              <KPICard
+                title="Productivity"
+                value={`${metrics.productivityScore}%`}
+                icon={
+                  <svg
+                    className="w-7 h-7 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                }
+                color="purple"
+                previousValue={project.previousMetrics?.productivityScore}
+                currentValue={metrics.productivityScore}
+                changeType="difference"
+                subtext="efficiency gain"
+              />
             </div>
 
             {/* Charts and Additional Metrics */}
@@ -1195,44 +999,39 @@ export default function ProjectAnalyticsPage() {
                   </div>
                 </div>
                 <div className="h-64 flex items-end justify-between space-x-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4">
-                  {metrics.weeklyProgress.map((value, index) => {
-                    const maxValue = Math.max(...metrics.weeklyProgress);
-                    const height =
-                      maxValue > 0
-                        ? Math.max((value / maxValue) * 90, value > 0 ? 15 : 0)
-                        : 0;
-                    const days = [
-                      "Mon",
-                      "Tue",
-                      "Wed",
-                      "Thu",
-                      "Fri",
-                      "Sat",
-                      "Sun",
-                    ];
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
+                    (day, index) => {
+                      const value = metrics.weeklyProgress.at(index) ?? 0;
+                      const maxValue = Math.max(...metrics.weeklyProgress);
+                      const minHeight = value > 0 ? 15 : 0;
+                      const height =
+                        maxValue > 0
+                          ? Math.max((value / maxValue) * 90, minHeight)
+                          : 0;
 
-                    return (
-                      <div
-                        key={index}
-                        className="flex-1 flex flex-col items-center group"
-                      >
+                      return (
                         <div
-                          className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t-lg transition-all duration-300 hover:from-blue-600 hover:to-blue-500 cursor-pointer shadow-sm"
-                          style={{
-                            height: `${height}%`,
-                            minHeight: value > 0 ? "20px" : "4px",
-                          }}
-                          title={`${days[index]}: ${value} tasks completed`}
-                        ></div>
-                        <span className="text-xs text-gray-600 dark:text-gray-400 mt-3 font-medium">
-                          {days[index]}
-                        </span>
-                        <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-2 py-1 rounded-full mt-1 shadow-sm">
-                          {value}
-                        </span>
-                      </div>
-                    );
-                  })}
+                          key={day}
+                          className="flex-1 flex flex-col items-center group"
+                        >
+                          <div
+                            className="w-full bg-gradient-to-t from-blue-500 to-blue-400 rounded-t-lg transition-all duration-300 hover:from-blue-600 hover:to-blue-500 cursor-pointer shadow-sm"
+                            style={{
+                              height: `${height}%`,
+                              minHeight: value > 0 ? "20px" : "4px",
+                            }}
+                            title={`${day}: ${value} tasks completed`}
+                          ></div>
+                          <span className="text-xs text-gray-600 dark:text-gray-400 mt-3 font-medium">
+                            {day}
+                          </span>
+                          <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-2 py-1 rounded-full mt-1 shadow-sm">
+                            {value}
+                          </span>
+                        </div>
+                      );
+                    }
+                  )}
                 </div>
               </div>
 
@@ -1411,15 +1210,13 @@ export default function ProjectAnalyticsPage() {
                             <div className="flex items-center space-x-3">
                               {/* Visual Status Indicator */}
                               <div
-                                className={`w-3 h-3 rounded-full flex-shrink-0 ${
-                                  isCompleted
-                                    ? "bg-green-500"
-                                    : isOverdue
-                                      ? "bg-red-500"
-                                      : task.status === "in-progress"
-                                        ? "bg-blue-500"
-                                        : "bg-gray-400"
-                                }`}
+                                className={`w-3 h-3 rounded-full flex-shrink-0 ${(() => {
+                                  if (isCompleted) return "bg-green-500";
+                                  if (isOverdue) return "bg-red-500";
+                                  if (task.status === "in-progress")
+                                    return "bg-blue-500";
+                                  return "bg-gray-400";
+                                })()}`}
                                 aria-label={`Task status: ${task.status}`}
                               ></div>
                               <div className="min-w-0 flex-1">
@@ -1580,7 +1377,7 @@ interface AssignTaskModalProps {
   isOpen: boolean;
   taskTitle: string;
   onClose: () => void;
-  onSubmit: (assignee: string) => void;
+  onSubmit: (assignee: string) => Promise<void>;
   organizationId: string;
   projectId: string;
 }
@@ -1592,7 +1389,7 @@ function AssignTaskModal({
   onSubmit,
   organizationId,
   projectId,
-}: AssignTaskModalProps) {
+}: Readonly<AssignTaskModalProps>) {
   const [assignee, setAssignee] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -1687,7 +1484,7 @@ interface EditTaskModalProps {
   isOpen: boolean;
   currentTitle: string;
   onClose: () => void;
-  onSubmit: (newTitle: string) => void;
+  onSubmit: (newTitle: string) => Promise<void>;
 }
 
 function EditTaskModal({
@@ -1695,7 +1492,7 @@ function EditTaskModal({
   currentTitle,
   onClose,
   onSubmit,
-}: EditTaskModalProps) {
+}: Readonly<EditTaskModalProps>) {
   const [title, setTitle] = useState(currentTitle);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -1770,7 +1567,7 @@ interface NotificationProps {
   onClose: () => void;
 }
 
-function Notification({ message, type, onClose }: NotificationProps) {
+function Notification({ message, type, onClose }: Readonly<NotificationProps>) {
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose();
@@ -1849,4 +1646,202 @@ function Notification({ message, type, onClose }: NotificationProps) {
       </div>
     </div>
   );
+}
+
+interface KPICardProps {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+  color: "blue" | "green" | "red" | "purple";
+  previousValue?: number;
+  currentValue?: number;
+  isDecreasePositive?: boolean;
+  changeType?: "percentage" | "difference" | "percentage_abs";
+  subtext: string;
+}
+
+function KPICard({
+  title,
+  value,
+  icon,
+  color,
+  previousValue = 0,
+  currentValue = 0,
+  isDecreasePositive = false,
+  changeType = "percentage",
+  subtext,
+}: Readonly<KPICardProps>) {
+  const colorStyles = {
+    blue: {
+      groupHoverText:
+        "group-hover:text-blue-600 dark:group-hover:text-blue-400",
+      groupHoverBorder: "hover:border-blue-300 dark:hover:border-blue-600",
+      bgGradient: "bg-gradient-to-br from-blue-500 to-blue-600",
+      shadow: "group-hover:shadow-blue-200 dark:group-hover:shadow-blue-900",
+    },
+    green: {
+      groupHoverText:
+        "group-hover:text-green-600 dark:group-hover:text-green-400",
+      groupHoverBorder: "hover:border-green-300 dark:hover:border-green-600",
+      bgGradient: "bg-gradient-to-br from-green-500 to-green-600",
+      shadow: "group-hover:shadow-green-200 dark:group-hover:shadow-green-900",
+    },
+    red: {
+      groupHoverText: "group-hover:text-red-600 dark:group-hover:text-red-400",
+      groupHoverBorder: "hover:border-red-300 dark:hover:border-red-600",
+      bgGradient: "bg-gradient-to-br from-red-500 to-red-600",
+      shadow: "group-hover:shadow-red-200 dark:group-hover:shadow-red-900",
+    },
+    purple: {
+      groupHoverText:
+        "group-hover:text-purple-600 dark:group-hover:text-purple-400",
+      groupHoverBorder: "hover:border-purple-300 dark:hover:border-purple-600",
+      bgGradient: "bg-gradient-to-br from-purple-500 to-purple-600",
+      shadow:
+        "group-hover:shadow-purple-200 dark:group-hover:shadow-purple-900",
+    },
+  };
+
+  const style = colorStyles[color];
+
+  const { change, isIncrease, isDecrease } = computeChange(
+    changeType,
+    previousValue,
+    currentValue
+  );
+
+  const isPositive = isDecreasePositive ? isDecrease : isIncrease;
+  const isNegative = isDecreasePositive ? isIncrease : isDecrease;
+
+  const trendColorClass = getTrendColorClass(
+    previousValue,
+    isPositive,
+    isNegative
+  );
+  const trendTextClass = getTrendTextClass(
+    previousValue,
+    isPositive,
+    isNegative
+  );
+  const displayChange = formatDisplayChange(previousValue, changeType, change);
+  const trendIconPath = getTrendIconPath(previousValue, isIncrease, isDecrease);
+
+  return (
+    <div
+      className={`group bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 ${style.groupHoverBorder}`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
+            {title}
+          </p>
+          <p
+            className={`text-3xl font-bold text-gray-900 dark:text-gray-100 transition-colors ${style.groupHoverText}`}
+            aria-label={`${value} ${title.toLowerCase()}`}
+          >
+            {value}
+          </p>
+        </div>
+        <div
+          className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg transition-shadow ${style.bgGradient} ${style.shadow}`}
+        >
+          {icon}
+        </div>
+      </div>
+      <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+        <div className="flex items-center text-sm">
+          <div className="flex items-center">
+            <svg
+              className={`w-4 h-4 mr-1 ${trendColorClass}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d={trendIconPath}
+              />
+            </svg>
+            <span className={`font-semibold ${trendTextClass}`}>
+              {displayChange}
+            </span>
+          </div>
+          <span className="text-gray-500 dark:text-gray-400 ml-2">
+            {subtext}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function computeChange(
+  changeType: string,
+  previousValue: number,
+  currentValue: number
+) {
+  let change = 0;
+  if (changeType === "percentage" || changeType === "percentage_abs") {
+    change =
+      previousValue > 0
+        ? ((currentValue - previousValue) / previousValue) * 100
+        : 0;
+  } else {
+    change = previousValue > 0 ? currentValue - previousValue : 0;
+  }
+  return {
+    change,
+    isIncrease: change > 0,
+    isDecrease: change < 0,
+  };
+}
+
+function getTrendColorClass(
+  previousValue: number,
+  isPositive: boolean,
+  isNegative: boolean
+) {
+  if (previousValue <= 0) return "text-gray-500";
+  if (isPositive) return "text-green-500";
+  if (isNegative) return "text-red-500";
+  return "text-gray-500";
+}
+
+function getTrendTextClass(
+  previousValue: number,
+  isPositive: boolean,
+  isNegative: boolean
+) {
+  if (previousValue <= 0) return "text-gray-600 dark:text-gray-400";
+  if (isPositive) return "text-green-600 dark:text-green-400";
+  if (isNegative) return "text-red-600 dark:text-red-400";
+  return "text-gray-600 dark:text-gray-400";
+}
+
+function formatDisplayChange(
+  previousValue: number,
+  changeType: string,
+  change: number
+) {
+  if (previousValue <= 0) return "N/A";
+  if (changeType === "percentage_abs") {
+    return change > 0
+      ? `+${Math.round(change)}%`
+      : `${Math.round(Math.abs(change))}%`;
+  }
+  const sign = change > 0 ? "+" : "";
+  return `${sign}${Math.round(change)}%`;
+}
+
+function getTrendIconPath(
+  previousValue: number,
+  isIncrease: boolean,
+  isDecrease: boolean
+) {
+  if (previousValue <= 0) return "M5 12h14";
+  if (isIncrease) return "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6";
+  if (isDecrease) return "M13 17h8m0 0V9m0 8l-8-8-4 4-6-6";
+  return "M5 12h14";
 }

@@ -7,4 +7,4 @@ export const adminApp = admin.app();
 
 // Re-export the admin SDK for direct access to Firebase Admin methods
 // Used when you need access to the full admin SDK rather than just the app instance
-export { admin };
+export { admin } from "./adminConfig";

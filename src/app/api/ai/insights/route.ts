@@ -39,17 +39,18 @@ interface AIInsight {
 export async function POST(request: NextRequest) {
   try {
     // Extract project data from request body
-    const { projectId, projectName, metrics, tasks, timeframe } =
-      await request.json();
+    const { projectName, metrics, tasks, timeframe } = await request.json();
 
     // Fix for teamMembers count if it's showing 0 despite having assigned team members
     if (
       metrics.teamMembers === 0 &&
-      tasks.some((task) => task.assignee && task.assignee !== "Unassigned")
+      tasks.some(
+        (task: TaskAnalytics) => task.assignee && task.assignee !== "Unassigned"
+      )
     ) {
       // Count unique assignees from tasks as team members
       const uniqueAssignees = new Set();
-      tasks.forEach((task) => {
+      tasks.forEach((task: TaskAnalytics) => {
         if (task.assignee && task.assignee !== "Unassigned") {
           uniqueAssignees.add(task.assignee);
         }
@@ -127,15 +128,20 @@ Provide only the JSON array, no additional text.`;
 
     // Generate AI insights using the prepared prompt
     const result = await model.generateContent(prompt);
-    const response = await result.response;
+    const response = result.response;
     const text = response.text();
 
     // Parse and validate AI response
 
     let insights: AIInsight[];
     try {
-      // Extract JSON array from AI response using regex
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      // Extract JSON array from AI response
+      const startIndex = text.indexOf("[");
+      const endIndex = text.lastIndexOf("]");
+      const jsonMatch =
+        startIndex !== -1 && endIndex > startIndex
+          ? [text.substring(startIndex, endIndex + 1)]
+          : null;
       if (!jsonMatch) {
         throw new Error("No JSON array found in response");
       }

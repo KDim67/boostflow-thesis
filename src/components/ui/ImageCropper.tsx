@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import Cropper from "react-easy-crop";
 import { Button } from "@/components/ui/button";
 import { X, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
@@ -32,8 +32,9 @@ const createImage = (url: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
     const image = new Image();
     image.addEventListener("load", () => resolve(image));
-    image.addEventListener("error", (error) => reject(error));
-    // Enable cross-origin requests for external images
+    image.addEventListener("error", () =>
+      reject(new Error("Failed to load image"))
+    );
     image.setAttribute("crossOrigin", "anonymous");
     image.src = url;
   });
@@ -117,7 +118,7 @@ export default function ImageCropper({
   aspectRatio = 1, // Default to square crop
   cropShape = "round", // Default to circular crop
   title = "Crop Image",
-}: ImageCropperProps) {
+}: Readonly<ImageCropperProps>) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -139,11 +140,7 @@ export default function ImageCropper({
     setIsProcessing(true);
     try {
       // Generate the cropped image blob (not used here but validates the crop)
-      const croppedImage = await getCroppedImg(
-        image,
-        croppedAreaPixels,
-        rotation
-      );
+      await getCroppedImg(image, croppedAreaPixels, rotation);
       // Pass crop coordinates back to parent component
       onCropComplete(croppedAreaPixels);
     } catch (error) {

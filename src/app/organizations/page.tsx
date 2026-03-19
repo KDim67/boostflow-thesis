@@ -3,13 +3,13 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { User } from "firebase/auth";
 import { useAuth } from "@/lib/firebase/useAuth";
 import {
   getUserOrganizations,
   createOrganization,
 } from "@/lib/firebase/organizationService";
 import {
-  Organization,
   OrganizationWithDetails,
   SubscriptionPlan,
 } from "@/lib/types/organization";
@@ -19,6 +19,342 @@ import Badge from "@/components/Badge";
  * Organizations management page component
  * Allows users to view, create, and manage their organizations with subscription plans
  */
+// Base pricing per user per month in EUR
+const basePrices = {
+  starter: 7.49,
+  pro: 15,
+};
+
+/**
+ * Returns the feature list for each subscription plan
+ * @param plan - The subscription plan type
+ * @returns Array of feature strings for the plan
+ */
+const getPlanFeatures = (plan: SubscriptionPlan) => {
+  switch (plan) {
+    case "free":
+      return [
+        "Up to 15 users",
+        "Limited automation workflows",
+        "Basic analytics",
+        "4 GB storage",
+        "Community support",
+      ];
+    case "starter":
+      return [
+        "Unlimited Users",
+        "Basic automation workflows",
+        "Standard analytics",
+        "250 GB storage",
+        "Email support",
+      ];
+    case "professional":
+      return [
+        "Unlimited users",
+        "Advanced automation workflows",
+        "AI-powered analytics",
+        "Unlimited Storage",
+        "Priority support",
+      ];
+    case "enterprise":
+      return [
+        "Everything in Pro plan",
+        "Custom AI model training",
+        "Dedicated account manager",
+        "Custom integrations",
+        "24/7 phone support",
+        "On-premise deployment",
+      ];
+    default:
+      return [];
+  }
+};
+
+/**
+ * Gets the pricing unit text for display (e.g., "/month per user")
+ * @param plan - The subscription plan type
+ * @returns Unit text string for the plan
+ */
+const getPlanPriceUnit = (plan: SubscriptionPlan) => {
+  switch (plan) {
+    case "free":
+      return "/forever";
+    case "starter":
+      return "/month per user";
+    case "professional":
+      return "/month per user";
+    case "enterprise":
+      return ""; // No unit for custom pricing
+    default:
+      return "";
+  }
+};
+
+/**
+ * Calculates the final price per user with volume and billing cycle discounts
+ * @param basePrice - Base price per user per month
+ * @returns Formatted price string with 2 decimal places
+ */
+const calculatePrice = (
+  basePrice: number,
+  teamSize: number,
+  billingCycle: string
+) => {
+  let discount = 0;
+
+  // Volume-based discount tiers
+  if (teamSize > 500) {
+    discount = 0.25; // 25% discount for enterprise teams
+  } else if (teamSize > 300) {
+    discount = 0.2; // 20% discount for large teams
+  } else if (teamSize > 100) {
+    discount = 0.15; // 15% discount for medium teams
+  } else if (teamSize > 50) {
+    discount = 0.1; // 10% discount for growing teams
+  } else if (teamSize > 20) {
+    discount = 0.05; // 5% discount for small teams
+  }
+
+  // Annual billing discount (17% off)
+  const annualDiscount = billingCycle === "annually" ? 0.17 : 0;
+
+  // Apply both discounts multiplicatively
+  const discountedPrice = basePrice * (1 - discount) * (1 - annualDiscount);
+  return discountedPrice.toFixed(2);
+};
+
+/**
+ * Gets the current volume discount percentage for display purposes
+ * @returns Discount percentage as integer (0-25)
+ */
+const getCurrentDiscount = (teamSize: number) => {
+  if (teamSize > 500) return 25;
+  if (teamSize > 300) return 20;
+  if (teamSize > 100) return 15;
+  if (teamSize > 50) return 10;
+  if (teamSize > 20) return 5;
+  return 0;
+};
+
+/**
+ * Gets the formatted price string for a subscription plan
+ * @param plan - The subscription plan type
+ * @returns Formatted price string with currency symbol
+ */
+const getPlanPrice = (
+  plan: SubscriptionPlan,
+  teamSize: number,
+  billingCycle: string
+) => {
+  switch (plan) {
+    case "free":
+      return "€0";
+    case "starter":
+      return `€${calculatePrice(basePrices.starter, teamSize, billingCycle)}`;
+    case "professional":
+      return `€${calculatePrice(basePrices.pro, teamSize, billingCycle)}`;
+    case "enterprise":
+      return "Custom"; // Enterprise pricing is negotiated
+    default:
+      return "€0";
+  }
+};
+
+async function fetchOrganizationsHelper(
+  userId: string,
+  setIsLoading: (v: boolean) => void,
+  setOrganizations: (v: OrganizationWithDetails[]) => void,
+  setError: (v: string | null) => void
+): Promise<void> {
+  try {
+    setIsLoading(true);
+    const userOrgs = await getUserOrganizations(userId);
+    setOrganizations(userOrgs);
+  } catch (err) {
+    console.error("Error fetching organizations:", err);
+    setError("Failed to load organizations. Please try again.");
+  } finally {
+    setIsLoading(false);
+  }
+}
+
+async function handleCreateOrganizationHelper(
+  e: React.FormEvent,
+  user: User,
+  state: {
+    newOrgName: string;
+    newOrgPlan: SubscriptionPlan;
+    teamSize: number;
+    billingCycle: string;
+  },
+  setIsCreating: (v: boolean) => void,
+  setError: (v: string | null) => void,
+  push: (url: string) => void
+): Promise<void> {
+  e.preventDefault();
+  const { newOrgPlan, teamSize, billingCycle, newOrgName } = state;
+
+  if (newOrgPlan === "free" && teamSize > 15) {
+    setError(
+      "Free plan is limited to 15 users. Please reduce team size or choose a different plan."
+    );
+    return;
+  }
+
+  try {
+    setIsCreating(true);
+    setError(null);
+
+    let calculatedPricePerUser = 0;
+    let calculatedTotalPrice = 0;
+
+    if (newOrgPlan === "starter") {
+      calculatedPricePerUser = Number.parseFloat(
+        calculatePrice(basePrices.starter, teamSize, billingCycle)
+      );
+      calculatedTotalPrice = calculatedPricePerUser * teamSize;
+    } else if (newOrgPlan === "professional") {
+      calculatedPricePerUser = Number.parseFloat(
+        calculatePrice(basePrices.pro, teamSize, billingCycle)
+      );
+      calculatedTotalPrice = calculatedPricePerUser * teamSize;
+    }
+
+    const subscriptionDetails = {
+      teamSize,
+      billingCycle,
+      pricePerUser: calculatedPricePerUser,
+      totalPrice: calculatedTotalPrice,
+      subscribedAt: new Date().toISOString(),
+      discount: getCurrentDiscount(teamSize),
+    };
+
+    const orgId = await createOrganization(user, {
+      name: newOrgName,
+      plan: newOrgPlan,
+      subscriptionDetails,
+    });
+
+    push(`/organizations/${orgId}`);
+  } catch (error) {
+    console.error("Error creating organization:", error);
+    setError("Failed to create organization. Please try again.");
+  } finally {
+    setIsCreating(false);
+  }
+}
+
+function compareOrganizations(
+  a: OrganizationWithDetails,
+  b: OrganizationWithDetails,
+  sortBy: "name" | "plan" | "members" | "projects"
+): number {
+  switch (sortBy) {
+    case "name":
+      return a.name.localeCompare(b.name);
+    case "plan":
+      return a.plan.localeCompare(b.plan);
+    case "members":
+      return (b.memberCount || 0) - (a.memberCount || 0);
+    case "projects":
+      return (b.projectCount || 0) - (a.projectCount || 0);
+    default:
+      return 0;
+  }
+}
+
+function getFreePlanClasses(teamSize: number, plan: SubscriptionPlan): string {
+  if (teamSize > 15) {
+    return "bg-gray-300 text-gray-500 cursor-not-allowed";
+  }
+  if (plan === "free") {
+    return "bg-gray-600 text-white";
+  }
+  return "bg-white text-gray-600 border border-gray-600 hover:bg-gray-50";
+}
+
+function getFreePlanButtonLabel(
+  teamSize: number,
+  plan: SubscriptionPlan
+): string {
+  if (teamSize > 15) return "Not Available";
+  if (plan === "free") return "Selected";
+  return "Select Plan";
+}
+
+function getBillingButtonClass(cycle: string, selected: string): string {
+  const activeClass = "bg-white dark:bg-gray-600 shadow-sm";
+  const inactiveClass = "text-gray-600 dark:text-gray-300";
+  return `flex items-center justify-center px-4 py-2 rounded-full transition-all ${cycle === selected ? activeClass : inactiveClass}`;
+}
+
+function getNewOrgPlanButtonText(
+  plan: SubscriptionPlan,
+  selectedPlan: SubscriptionPlan
+): string {
+  if (plan === selectedPlan) return "Selected";
+  return plan === "enterprise" ? "Contact Sales" : "Select Plan";
+}
+
+function getNewOrgPlanCardClasses(
+  plan: SubscriptionPlan,
+  selectedPlan: SubscriptionPlan
+): string {
+  const borderMap: Record<
+    SubscriptionPlan,
+    { selected: string; unselected: string }
+  > = {
+    free: {
+      selected: "border-gray-500 ring-2 ring-gray-500",
+      unselected:
+        "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600",
+    },
+    starter: {
+      selected: "border-blue-500 ring-2 ring-blue-500",
+      unselected:
+        "border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600",
+    },
+    professional: {
+      selected: "border-purple-500 ring-2 ring-purple-500",
+      unselected:
+        "border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600",
+    },
+    enterprise: {
+      selected: "border-green-500 ring-2 ring-green-500",
+      unselected:
+        "border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-600",
+    },
+  };
+  const { selected, unselected } = borderMap[plan];
+  return `bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 border transition-all hover:shadow-lg relative flex flex-col h-full ${plan === selectedPlan ? selected : unselected}`;
+}
+
+function getNewOrgPlanButtonClasses(
+  plan: SubscriptionPlan,
+  selectedPlan: SubscriptionPlan
+): string {
+  const classMap: Record<string, { selected: string; unselected: string }> = {
+    starter: {
+      selected: "bg-blue-600 text-white",
+      unselected:
+        "bg-white text-blue-600 border border-blue-600 hover:bg-blue-50",
+    },
+    professional: {
+      selected:
+        "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg",
+      unselected:
+        "bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg",
+    },
+    enterprise: {
+      selected: "bg-green-600 text-white",
+      unselected:
+        "bg-white text-green-600 border border-green-600 hover:bg-green-50",
+    },
+  };
+  const classes = classMap[plan];
+  return `w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${plan === selectedPlan ? classes.selected : classes.unselected}`;
+}
+
 export default function OrganizationsPage() {
   // Organization data and UI state
   const [organizations, setOrganizations] = useState<OrganizationWithDetails[]>(
@@ -44,163 +380,19 @@ export default function OrganizationsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  // Base pricing per user per month in EUR
-  const basePrices = {
-    starter: 7.49,
-    pro: 15,
-  };
-
-  /**
-   * Calculates the final price per user with volume and billing cycle discounts
-   * @param basePrice - Base price per user per month
-   * @returns Formatted price string with 2 decimal places
-   */
-  const calculatePrice = (basePrice: number) => {
-    let discount = 0;
-
-    // Volume-based discount tiers
-    if (teamSize > 500) {
-      discount = 0.25; // 25% discount for enterprise teams
-    } else if (teamSize > 300) {
-      discount = 0.2; // 20% discount for large teams
-    } else if (teamSize > 100) {
-      discount = 0.15; // 15% discount for medium teams
-    } else if (teamSize > 50) {
-      discount = 0.1; // 10% discount for growing teams
-    } else if (teamSize > 20) {
-      discount = 0.05; // 5% discount for small teams
-    }
-
-    // Annual billing discount (17% off)
-    const annualDiscount = billingCycle === "annually" ? 0.17 : 0;
-
-    // Apply both discounts multiplicatively
-    const discountedPrice = basePrice * (1 - discount) * (1 - annualDiscount);
-    return discountedPrice.toFixed(2);
-  };
-
-  /**
-   * Gets the current volume discount percentage for display purposes
-   * @returns Discount percentage as integer (0-25)
-   */
-  const getCurrentDiscount = () => {
-    if (teamSize > 500) return 25;
-    if (teamSize > 300) return 20;
-    if (teamSize > 100) return 15;
-    if (teamSize > 50) return 10;
-    if (teamSize > 20) return 5;
-    return 0;
-  };
-
-  /**
-   * Returns the feature list for each subscription plan
-   * @param plan - The subscription plan type
-   * @returns Array of feature strings for the plan
-   */
-  const getPlanFeatures = (plan: SubscriptionPlan) => {
-    switch (plan) {
-      case "free":
-        return [
-          "Up to 15 users",
-          "Limited automation workflows",
-          "Basic analytics",
-          "4 GB storage",
-          "Community support",
-        ];
-      case "starter":
-        return [
-          "Unlimited Users",
-          "Basic automation workflows",
-          "Standard analytics",
-          "250 GB storage",
-          "Email support",
-        ];
-      case "professional":
-        return [
-          "Unlimited users",
-          "Advanced automation workflows",
-          "AI-powered analytics",
-          "Unlimited Storage",
-          "Priority support",
-        ];
-      case "enterprise":
-        return [
-          "Everything in Pro plan",
-          "Custom AI model training",
-          "Dedicated account manager",
-          "Custom integrations",
-          "24/7 phone support",
-          "On-premise deployment",
-        ];
-      default:
-        return [];
-    }
-  };
-
-  /**
-   * Gets the formatted price string for a subscription plan
-   * @param plan - The subscription plan type
-   * @returns Formatted price string with currency symbol
-   */
-  const getPlanPrice = (plan: SubscriptionPlan) => {
-    switch (plan) {
-      case "free":
-        return "€0";
-      case "starter":
-        return `€${calculatePrice(basePrices.starter)}`;
-      case "professional":
-        return `€${calculatePrice(basePrices.pro)}`;
-      case "enterprise":
-        return "Custom"; // Enterprise pricing is negotiated
-      default:
-        return "€0";
-    }
-  };
-
-  /**
-   * Gets the pricing unit text for display (e.g., "/month per user")
-   * @param plan - The subscription plan type
-   * @returns Unit text string for the plan
-   */
-  const getPlanPriceUnit = (plan: SubscriptionPlan) => {
-    switch (plan) {
-      case "free":
-        return "/forever";
-      case "starter":
-        return "/month per user";
-      case "professional":
-        return "/month per user";
-      case "enterprise":
-        return ""; // No unit for custom pricing
-      default:
-        return "";
-    }
-  };
-
   // Fetch user's organizations when authentication is complete
   useEffect(() => {
-    const fetchOrganizations = async () => {
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        const userOrgs = await getUserOrganizations(user.uid);
-        setOrganizations(userOrgs);
-      } catch (error) {
-        console.error("Error fetching organizations:", error);
-        setError("Failed to load organizations. Please try again.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    // Only fetch when auth loading is complete to avoid unnecessary calls
-    if (!authLoading) {
-      fetchOrganizations();
+    if (authLoading) return;
+    if (!user) {
+      setIsLoading(false);
+      return;
     }
+    fetchOrganizationsHelper(
+      user.uid,
+      setIsLoading,
+      setOrganizations,
+      setError
+    );
   }, [user, authLoading, router]);
 
   // Enforce free plan team size limit when plan changes
@@ -215,80 +407,21 @@ export default function OrganizationsPage() {
    * Validates plan limits, calculates pricing, and creates the organization
    */
   const handleCreateOrganization = async (e: React.FormEvent) => {
-    e.preventDefault();
     if (!user) return;
-
-    // Validate free plan team size limit
-    if (newOrgPlan === "free" && teamSize > 15) {
-      setError(
-        "Free plan is limited to 15 users. Please reduce team size or choose a different plan."
-      );
-      return;
-    }
-
-    try {
-      setIsCreating(true);
-      setError(null);
-
-      // Calculate subscription details with current pricing and discounts
-      const subscriptionDetails = {
-        teamSize,
-        billingCycle,
-        pricePerUser:
-          newOrgPlan === "starter"
-            ? parseFloat(calculatePrice(basePrices.starter))
-            : newOrgPlan === "professional"
-              ? parseFloat(calculatePrice(basePrices.pro))
-              : 0,
-        totalPrice:
-          newOrgPlan === "free"
-            ? 0
-            : newOrgPlan === "enterprise"
-              ? 0 // Enterprise pricing is custom
-              : parseFloat(
-                  calculatePrice(
-                    newOrgPlan === "starter"
-                      ? basePrices.starter
-                      : basePrices.pro
-                  )
-                ) * teamSize,
-        subscribedAt: new Date().toISOString(),
-        discount: getCurrentDiscount(),
-      };
-
-      // Create organization and redirect to its page
-      const orgId = await createOrganization(user, {
-        name: newOrgName,
-        plan: newOrgPlan,
-        subscriptionDetails,
-      });
-
-      router.push(`/organizations/${orgId}`);
-    } catch (error) {
-      console.error("Error creating organization:", error);
-      setError("Failed to create organization. Please try again.");
-    } finally {
-      setIsCreating(false);
-    }
+    await handleCreateOrganizationHelper(
+      e,
+      user,
+      { newOrgName, newOrgPlan, teamSize, billingCycle },
+      setIsCreating,
+      setError,
+      (url: string) => router.push(url)
+    );
   };
 
   // Filter organizations by search term and sort by selected criteria
   const filteredAndSortedOrganizations = organizations
     .filter((org) => org.name.toLowerCase().includes(searchTerm.toLowerCase()))
-    .sort((a, b) => {
-      switch (sortBy) {
-        case "name":
-          return a.name.localeCompare(b.name); // Alphabetical sort
-        case "plan":
-          return a.plan.localeCompare(b.plan); // Plan type sort
-        case "members":
-          return (b.memberCount || 0) - (a.memberCount || 0); // Descending member count
-        case "projects":
-          return (b.projectCount || 0) - (a.projectCount || 0); // Descending project count
-        default:
-          return 0;
-      }
-    });
+    .sort((a, b) => compareOrganizations(a, b, sortBy));
 
   if (authLoading || isLoading) {
     return (
@@ -393,7 +526,7 @@ export default function OrganizationsPage() {
                 <span className="inline-flex items-center gap-1">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                   {organizations.length} organization
-                  {organizations.length !== 1 ? "s" : ""}
+                  {organizations.length === 1 ? "" : "s"}
                 </span>
               </div>
             </div>
@@ -445,10 +578,14 @@ export default function OrganizationsPage() {
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                  <label
+                    htmlFor="sort-by"
+                    className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap"
+                  >
                     Sort by:
                   </label>
                   <select
+                    id="sort-by"
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                     className="px-3 py-3 border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
@@ -484,11 +621,444 @@ export default function OrganizationsPage() {
 
         {/* Create Organization Form */}
         {showCreateForm && (
-          <div className="mb-8 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <CreateOrganizationForm
+            newOrgName={newOrgName}
+            setNewOrgName={setNewOrgName}
+            newOrgPlan={newOrgPlan}
+            setNewOrgPlan={setNewOrgPlan}
+            teamSize={teamSize}
+            setTeamSize={setTeamSize}
+            billingCycle={billingCycle}
+            setBillingCycle={setBillingCycle}
+            isCreating={isCreating}
+            onSubmit={handleCreateOrganization}
+            onCancel={() => setShowCreateForm(false)}
+          />
+        )}
+
+        {/* Organizations Grid */}
+        {filteredAndSortedOrganizations.length === 0 && !isLoading ? (
+          <EmptyOrganizationState
+            searchTerm={searchTerm}
+            showCreateForm={showCreateForm}
+            setShowCreateForm={setShowCreateForm}
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredAndSortedOrganizations.map((org) => (
+              <OrganizationCard key={org.id} org={org} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface CreateOrganizationFormProps {
+  newOrgName: string;
+  setNewOrgName: (v: string) => void;
+  newOrgPlan: SubscriptionPlan;
+  setNewOrgPlan: (v: SubscriptionPlan) => void;
+  teamSize: number;
+  setTeamSize: (v: number) => void;
+  billingCycle: string;
+  setBillingCycle: (v: string) => void;
+  isCreating: boolean;
+  onSubmit: (e: React.FormEvent) => void;
+  onCancel: () => void;
+}
+
+function CreateOrganizationForm({
+  newOrgName,
+  setNewOrgName,
+  newOrgPlan,
+  setNewOrgPlan,
+  teamSize,
+  setTeamSize,
+  billingCycle,
+  setBillingCycle,
+  isCreating,
+  onSubmit,
+  onCancel,
+}: Readonly<CreateOrganizationFormProps>) {
+  const freePlanClasses = getFreePlanClasses(teamSize, newOrgPlan);
+
+  return (
+    <div className="mb-8 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <svg
+            className="w-6 h-6 text-blue-600"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+            />
+          </svg>
+          Create New Organization
+        </h2>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">
+          Set up a new organization to start collaborating with your team
+        </p>
+      </div>
+
+      <form onSubmit={onSubmit} className="p-6 space-y-6">
+        <div className="space-y-2">
+          <label
+            htmlFor="orgName"
+            className="block text-sm font-semibold text-gray-700 dark:text-gray-300"
+          >
+            Organization Name *
+          </label>
+          <input
+            type="text"
+            id="orgName"
+            value={newOrgName}
+            onChange={(e) => setNewOrgName(e.target.value)}
+            placeholder="Enter your organization name"
+            className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            required
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Choose a name that represents your team or company
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Choose Your Plan
+          </h3>
+
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8">
+              <div className="flex flex-col flex-grow">
+                <div className="flex items-center justify-between mb-2">
+                  <label
+                    htmlFor="team-size"
+                    className="text-lg font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Team size:
+                  </label>
+                  <div className="flex items-center gap-2 bg-white dark:bg-gray-700 px-3 py-1 rounded-full shadow-sm">
+                    <input
+                      type="number"
+                      id="team-size-input"
+                      min="1"
+                      max="1000"
+                      value={teamSize}
+                      onChange={(e) =>
+                        setTeamSize(Number.parseInt(e.target.value) || 1)
+                      }
+                      className="w-16 text-center border-none focus:ring-0 focus:outline-none bg-transparent text-gray-700 dark:text-gray-300"
+                    />
+                    <span className="text-gray-600 dark:text-gray-400">
+                      users
+                    </span>
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="range"
+                    id="team-size"
+                    min="1"
+                    max="1000"
+                    value={teamSize}
+                    onChange={(e) =>
+                      setTeamSize(Number.parseInt(e.target.value))
+                    }
+                    className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                  <div className="relative mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span className="absolute left-0">1</span>
+                    <span className="absolute -translate-x-1/2 left-1/4">
+                      250
+                    </span>
+                    <span className="absolute -translate-x-1/2 left-1/2">
+                      500
+                    </span>
+                    <span className="absolute -translate-x-1/2 left-3/4">
+                      750
+                    </span>
+                    <span className="absolute -translate-x-full left-full">
+                      1000
+                    </span>
+                  </div>
+                </div>
+                {getCurrentDiscount(teamSize) > 0 && (
+                  <div className="mt-2 text-sm font-medium text-green-600 dark:text-green-400">
+                    {getCurrentDiscount(teamSize)}% team size discount applied!
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col">
+                <span className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Bill me:
+                </span>
+                <div className="flex items-center gap-4 bg-gray-100 dark:bg-gray-700 p-1 rounded-full">
+                  <button
+                    type="button"
+                    onClick={() => setBillingCycle("monthly")}
+                    className={getBillingButtonClass("monthly", billingCycle)}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBillingCycle("annually")}
+                    className={getBillingButtonClass("annually", billingCycle)}
+                  >
+                    Annually
+                  </button>
+                </div>
+                {billingCycle === "annually" && (
+                  <div className="mt-2 text-sm font-medium text-green-600 dark:text-green-400 text-center">
+                    SAVE UP TO 17%
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className={getNewOrgPlanCardClasses("free", newOrgPlan)}>
+              <div className="absolute top-0 left-0 right-0 h-2 bg-gray-500 rounded-t-xl"></div>
+              <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
+                Free
+              </h3>
+              <div className="mb-6">
+                <span className="text-4xl font-bold text-gray-900 dark:text-white">
+                  {getPlanPrice("free", teamSize, billingCycle)}
+                </span>
+                <span className="text-gray-500 dark:text-gray-400">
+                  {getPlanPriceUnit("free")}
+                </span>
+              </div>
+              <p className="text-gray-600 dark:text-gray-300 mb-6">
+                Perfect for individuals and small projects to get started.
+              </p>
+              <ul className="space-y-3 mb-8 flex-grow">
+                {getPlanFeatures("free").map((feature) => (
+                  <li key={feature} className="flex items-start">
+                    <svg
+                      className="h-6 w-6 text-gray-500 mr-2 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span className="text-gray-700 dark:text-gray-300">
+                      {feature}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={
+                  teamSize > 15 ? undefined : () => setNewOrgPlan("free")
+                }
+                className={`w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${freePlanClasses}`}
+                disabled={teamSize > 15}
+              >
+                {getFreePlanButtonLabel(teamSize, newOrgPlan)}
+              </button>
+              {teamSize > 15 && (
+                <p className="text-xs text-red-500 mt-2 text-center">
+                  Free plan is limited to 15 users
+                </p>
+              )}
+            </div>
+
+            <div className={getNewOrgPlanCardClasses("starter", newOrgPlan)}>
+              <div className="absolute top-0 left-0 right-0 h-2 bg-blue-500 rounded-t-xl"></div>
+              <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
+                Starter
+              </h3>
+              <div className="mb-6">
+                <span className="text-4xl font-bold text-gray-900 dark:text-white">
+                  {getPlanPrice("starter", teamSize, billingCycle)}
+                </span>
+                <span className="text-gray-500 dark:text-gray-400">
+                  {getPlanPriceUnit("starter")}
+                </span>
+              </div>
+              <p className="text-gray-600 dark:text-gray-300 mb-6">
+                Perfect for small teams just getting started with automation.
+              </p>
+              <ul className="space-y-3 mb-8 flex-grow">
+                {getPlanFeatures("starter").map((feature) => (
+                  <li key={feature} className="flex items-start">
+                    <svg
+                      className="h-6 w-6 text-blue-500 mr-2 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span className="text-gray-700 dark:text-gray-300">
+                      {feature}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => setNewOrgPlan("starter")}
+                className={getNewOrgPlanButtonClasses("starter", newOrgPlan)}
+              >
+                {getNewOrgPlanButtonText("starter", newOrgPlan)}
+              </button>
+            </div>
+
+            <div
+              className={getNewOrgPlanCardClasses("professional", newOrgPlan)}
+            >
+              <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-t-xl"></div>
+              <div className="absolute -top-3 left-0 right-0 flex justify-center">
+                <span className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs font-bold uppercase py-1 px-3 rounded-full">
+                  Popular
+                </span>
+              </div>
+              <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
+                Professional
+              </h3>
+              <div className="mb-6">
+                <span className="text-4xl font-bold text-gray-900 dark:text-white">
+                  {getPlanPrice("professional", teamSize, billingCycle)}
+                </span>
+                <span className="text-gray-500 dark:text-gray-400">
+                  {getPlanPriceUnit("professional")}
+                </span>
+              </div>
+              <p className="text-gray-600 dark:text-gray-300 mb-6">
+                For growing teams that need advanced features and more
+                customization.
+              </p>
+              <ul className="space-y-3 mb-8 flex-grow">
+                {getPlanFeatures("professional").map((feature) => (
+                  <li key={feature} className="flex items-start">
+                    <svg
+                      className="h-6 w-6 text-purple-500 mr-2 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span className="text-gray-700 dark:text-gray-300">
+                      {feature}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => setNewOrgPlan("professional")}
+                className={getNewOrgPlanButtonClasses(
+                  "professional",
+                  newOrgPlan
+                )}
+              >
+                {getNewOrgPlanButtonText("professional", newOrgPlan)}
+              </button>
+            </div>
+
+            <div className={getNewOrgPlanCardClasses("enterprise", newOrgPlan)}>
+              <div className="absolute top-0 left-0 right-0 h-2 bg-green-500 rounded-t-xl"></div>
+              <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
+                Enterprise
+              </h3>
+              <div className="mb-6">
+                <span className="text-4xl font-bold text-gray-900 dark:text-white">
+                  {getPlanPrice("enterprise", teamSize, billingCycle)}
+                </span>
+                <span className="text-gray-500 dark:text-gray-400">
+                  {getPlanPriceUnit("enterprise")}
+                </span>
+              </div>
+              <p className="text-gray-600 dark:text-gray-300 mb-6">
+                For large organizations with custom requirements and dedicated
+                support.
+              </p>
+              <ul className="space-y-3 mb-8 flex-grow">
+                {getPlanFeatures("enterprise").map((feature) => (
+                  <li key={feature} className="flex items-start">
+                    <svg
+                      className="h-6 w-6 text-green-500 mr-2 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span className="text-gray-700 dark:text-gray-300">
+                      {feature}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => setNewOrgPlan("enterprise")}
+                className={getNewOrgPlanButtonClasses("enterprise", newOrgPlan)}
+              >
+                {getNewOrgPlanButtonText("enterprise", newOrgPlan)}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 pt-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all focus:outline-none focus:ring-2 focus:ring-gray-500/25"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isCreating || !newOrgName.trim()}
+            className="flex-1 sm:flex-none px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl disabled:shadow-none transform hover:scale-105 disabled:scale-100 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-blue-500/25 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isCreating ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                Creating...
+              </>
+            ) : (
+              <>
                 <svg
-                  className="w-6 h-6 text-blue-600"
+                  className="w-5 h-5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -497,580 +1067,151 @@ export default function OrganizationsPage() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                    d="M12 4v16m8-8H4"
                   />
                 </svg>
-                Create New Organization
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Set up a new organization to start collaborating with your team
-              </p>
-            </div>
+                Create Organization
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
 
-            <form onSubmit={handleCreateOrganization} className="p-6 space-y-6">
-              <div className="space-y-2">
-                <label
-                  htmlFor="orgName"
-                  className="block text-sm font-semibold text-gray-700 dark:text-gray-300"
-                >
-                  Organization Name *
-                </label>
-                <input
-                  type="text"
-                  id="orgName"
-                  value={newOrgName}
-                  onChange={(e) => setNewOrgName(e.target.value)}
-                  placeholder="Enter your organization name"
-                  className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  required
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Choose a name that represents your team or company
-                </p>
-              </div>
+interface EmptyOrganizationStateProps {
+  searchTerm: string;
+  showCreateForm: boolean;
+  setShowCreateForm: (show: boolean) => void;
+}
 
-              <div className="space-y-6">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Choose Your Plan
-                </h3>
-
-                {/* Team Size Selector */}
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6 shadow-sm">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8">
-                    <div className="flex flex-col flex-grow">
-                      <div className="flex items-center justify-between mb-2">
-                        <label
-                          htmlFor="team-size"
-                          className="text-lg font-medium text-gray-700 dark:text-gray-300"
-                        >
-                          Team size:
-                        </label>
-                        <div className="flex items-center gap-2 bg-white dark:bg-gray-700 px-3 py-1 rounded-full shadow-sm">
-                          <input
-                            type="number"
-                            id="team-size-input"
-                            min="1"
-                            max="1000"
-                            value={teamSize}
-                            onChange={(e) =>
-                              setTeamSize(parseInt(e.target.value) || 1)
-                            }
-                            className="w-16 text-center border-none focus:ring-0 focus:outline-none bg-transparent text-gray-700 dark:text-gray-300"
-                          />
-                          <span className="text-gray-600 dark:text-gray-400">
-                            users
-                          </span>
-                        </div>
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="range"
-                          id="team-size"
-                          min="1"
-                          max="1000"
-                          value={teamSize}
-                          onChange={(e) =>
-                            setTeamSize(parseInt(e.target.value))
-                          }
-                          className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                        />
-                        <div className="relative mt-2 text-xs text-gray-500 dark:text-gray-400">
-                          <span className="absolute left-0">1</span>
-                          <span className="absolute -translate-x-1/2 left-1/4">
-                            250
-                          </span>
-                          <span className="absolute -translate-x-1/2 left-1/2">
-                            500
-                          </span>
-                          <span className="absolute -translate-x-1/2 left-3/4">
-                            750
-                          </span>
-                          <span className="absolute -translate-x-full left-full">
-                            1000
-                          </span>
-                        </div>
-                      </div>
-                      {getCurrentDiscount() > 0 && (
-                        <div className="mt-2 text-sm font-medium text-green-600 dark:text-green-400">
-                          {getCurrentDiscount()}% team size discount applied!
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col">
-                      <label className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Bill me:
-                      </label>
-                      <div className="flex items-center gap-4 bg-gray-100 dark:bg-gray-700 p-1 rounded-full">
-                        <button
-                          type="button"
-                          onClick={() => setBillingCycle("monthly")}
-                          className={`flex items-center justify-center px-4 py-2 rounded-full transition-all ${
-                            billingCycle === "monthly"
-                              ? "bg-white dark:bg-gray-600 shadow-sm"
-                              : "text-gray-600 dark:text-gray-300"
-                          }`}
-                        >
-                          Monthly
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setBillingCycle("annually")}
-                          className={`flex items-center justify-center px-4 py-2 rounded-full transition-all ${
-                            billingCycle === "annually"
-                              ? "bg-white dark:bg-gray-600 shadow-sm"
-                              : "text-gray-600 dark:text-gray-300"
-                          }`}
-                        >
-                          Annually
-                        </button>
-                      </div>
-                      {billingCycle === "annually" && (
-                        <div className="mt-2 text-sm font-medium text-green-600 dark:text-green-400 text-center">
-                          SAVE UP TO 17%
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Plan Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {/* Free Plan */}
-                  <div
-                    className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 border transition-all hover:shadow-lg relative flex flex-col h-full ${
-                      newOrgPlan === "free"
-                        ? "border-gray-500 ring-2 ring-gray-500"
-                        : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-                    }`}
-                  >
-                    <div className="absolute top-0 left-0 right-0 h-2 bg-gray-500 rounded-t-xl"></div>
-                    <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
-                      Free
-                    </h3>
-                    <div className="mb-6">
-                      <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                        {getPlanPrice("free")}
-                      </span>
-                      <span className="text-gray-500 dark:text-gray-400">
-                        {getPlanPriceUnit("free")}
-                      </span>
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-300 mb-6">
-                      Perfect for individuals and small projects to get started.
-                    </p>
-                    <ul className="space-y-3 mb-8 flex-grow">
-                      {getPlanFeatures("free").map((feature, index) => (
-                        <li key={index} className="flex items-start">
-                          <svg
-                            className="h-6 w-6 text-gray-500 mr-2 flex-shrink-0"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                          <span className="text-gray-700 dark:text-gray-300">
-                            {feature}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      type="button"
-                      onClick={
-                        teamSize > 15 ? undefined : () => setNewOrgPlan("free")
-                      }
-                      className={`w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${
-                        teamSize > 15
-                          ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                          : newOrgPlan === "free"
-                            ? "bg-gray-600 text-white"
-                            : "bg-white text-gray-600 border border-gray-600 hover:bg-gray-50"
-                      }`}
-                      disabled={teamSize > 15}
-                    >
-                      {teamSize > 15
-                        ? "Not Available"
-                        : newOrgPlan === "free"
-                          ? "Selected"
-                          : "Select Plan"}
-                    </button>
-                    {teamSize > 15 && (
-                      <p className="text-xs text-red-500 mt-2 text-center">
-                        Free plan is limited to 15 users
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Starter Plan */}
-                  <div
-                    className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 border transition-all hover:shadow-lg relative flex flex-col h-full ${
-                      newOrgPlan === "starter"
-                        ? "border-blue-500 ring-2 ring-blue-500"
-                        : "border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600"
-                    }`}
-                  >
-                    <div className="absolute top-0 left-0 right-0 h-2 bg-blue-500 rounded-t-xl"></div>
-                    <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
-                      Starter
-                    </h3>
-                    <div className="mb-6">
-                      <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                        {getPlanPrice("starter")}
-                      </span>
-                      <span className="text-gray-500 dark:text-gray-400">
-                        {getPlanPriceUnit("starter")}
-                      </span>
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-300 mb-6">
-                      Perfect for small teams just getting started with
-                      automation.
-                    </p>
-                    <ul className="space-y-3 mb-8 flex-grow">
-                      {getPlanFeatures("starter").map((feature, index) => (
-                        <li key={index} className="flex items-start">
-                          <svg
-                            className="h-6 w-6 text-blue-500 mr-2 flex-shrink-0"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                          <span className="text-gray-700 dark:text-gray-300">
-                            {feature}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      type="button"
-                      onClick={() => setNewOrgPlan("starter")}
-                      className={`w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${
-                        newOrgPlan === "starter"
-                          ? "bg-blue-600 text-white"
-                          : "bg-white text-blue-600 border border-blue-600 hover:bg-blue-50"
-                      }`}
-                    >
-                      {newOrgPlan === "starter" ? "Selected" : "Select Plan"}
-                    </button>
-                  </div>
-
-                  {/* Professional Plan */}
-                  <div
-                    className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 border transition-all hover:shadow-lg relative flex flex-col h-full ${
-                      newOrgPlan === "professional"
-                        ? "border-purple-500 ring-2 ring-purple-500"
-                        : "border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600"
-                    }`}
-                  >
-                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-t-xl"></div>
-                    <div className="absolute -top-3 left-0 right-0 flex justify-center">
-                      <span className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs font-bold uppercase py-1 px-3 rounded-full">
-                        Popular
-                      </span>
-                    </div>
-                    <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
-                      Professional
-                    </h3>
-                    <div className="mb-6">
-                      <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                        {getPlanPrice("professional")}
-                      </span>
-                      <span className="text-gray-500 dark:text-gray-400">
-                        {getPlanPriceUnit("professional")}
-                      </span>
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-300 mb-6">
-                      For growing teams that need advanced features and more
-                      customization.
-                    </p>
-                    <ul className="space-y-3 mb-8 flex-grow">
-                      {getPlanFeatures("professional").map((feature, index) => (
-                        <li key={index} className="flex items-start">
-                          <svg
-                            className="h-6 w-6 text-purple-500 mr-2 flex-shrink-0"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                          <span className="text-gray-700 dark:text-gray-300">
-                            {feature}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      type="button"
-                      onClick={() => setNewOrgPlan("professional")}
-                      className={`w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${
-                        newOrgPlan === "professional"
-                          ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg"
-                          : "bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg"
-                      }`}
-                    >
-                      {newOrgPlan === "professional"
-                        ? "Selected"
-                        : "Select Plan"}
-                    </button>
-                  </div>
-
-                  {/* Enterprise Plan */}
-                  <div
-                    className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 border transition-all hover:shadow-lg relative flex flex-col h-full ${
-                      newOrgPlan === "enterprise"
-                        ? "border-green-500 ring-2 ring-green-500"
-                        : "border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-600"
-                    }`}
-                  >
-                    <div className="absolute top-0 left-0 right-0 h-2 bg-green-500 rounded-t-xl"></div>
-                    <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
-                      Enterprise
-                    </h3>
-                    <div className="mb-6">
-                      <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                        {getPlanPrice("enterprise")}
-                      </span>
-                      <span className="text-gray-500 dark:text-gray-400">
-                        {getPlanPriceUnit("enterprise")}
-                      </span>
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-300 mb-6">
-                      For large organizations with custom requirements and
-                      dedicated support.
-                    </p>
-                    <ul className="space-y-3 mb-8 flex-grow">
-                      {getPlanFeatures("enterprise").map((feature, index) => (
-                        <li key={index} className="flex items-start">
-                          <svg
-                            className="h-6 w-6 text-green-500 mr-2 flex-shrink-0"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                          <span className="text-gray-700 dark:text-gray-300">
-                            {feature}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      type="button"
-                      onClick={() => setNewOrgPlan("enterprise")}
-                      className={`w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${
-                        newOrgPlan === "enterprise"
-                          ? "bg-green-600 text-white"
-                          : "bg-white text-green-600 border border-green-600 hover:bg-green-50"
-                      }`}
-                    >
-                      {newOrgPlan === "enterprise"
-                        ? "Selected"
-                        : "Contact Sales"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateForm(false)}
-                  className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all focus:outline-none focus:ring-2 focus:ring-gray-500/25"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCreating || !newOrgName.trim()}
-                  className="flex-1 sm:flex-none px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl disabled:shadow-none transform hover:scale-105 disabled:scale-100 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-blue-500/25 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isCreating ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 4v16m8-8H4"
-                        />
-                      </svg>
-                      Create Organization
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Organizations Grid */}
-        {filteredAndSortedOrganizations.length === 0 && !isLoading ? (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-12 text-center">
-            <div className="max-w-md mx-auto">
-              <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-full flex items-center justify-center">
-                <svg
-                  className="w-12 h-12 text-blue-600 dark:text-blue-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                  />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-bold mb-3 text-gray-900 dark:text-white">
-                {searchTerm
-                  ? "No matching organizations"
-                  : "No Organizations Found"}
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                {searchTerm
-                  ? `No organizations match "${searchTerm}". Try adjusting your search terms.`
-                  : "You don't belong to any organizations yet. Create your first organization to start collaborating with your team."}
-              </p>
-              {!showCreateForm && !searchTerm && (
-                <button
-                  onClick={() => setShowCreateForm(true)}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-blue-500/25"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                  Create Your First Organization
-                </button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredAndSortedOrganizations.map((org) => (
-              <Link
-                href={`/organizations/${org.id}`}
-                key={org.id}
-                className="group bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700 p-6 transition-all duration-300 hover:scale-105 hover:border-blue-300 dark:hover:border-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-500/25"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3 flex-1 min-w-0">
-                    {org.logoUrl ? (
-                      <img
-                        src={org.logoUrl}
-                        alt={org.name}
-                        className="w-14 h-14 rounded-xl object-cover ring-2 ring-gray-200 dark:ring-gray-600 group-hover:ring-blue-300 dark:group-hover:ring-blue-600 transition-all"
-                      />
-                    ) : (
-                      <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 flex items-center justify-center ring-2 ring-gray-200 dark:ring-gray-600 group-hover:ring-blue-300 dark:group-hover:ring-blue-600 transition-all">
-                        <span className="text-blue-600 dark:text-blue-400 font-bold text-lg">
-                          {org.name.substring(0, 2).toUpperCase()}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                        {org.name}
-                      </h3>
-                      <div className="flex items-center gap-2 mt-2">
-                        <Badge type="role" value={org.userRole} size="sm" />
-                        <Badge
-                          type="plan"
-                          value={org.plan}
-                          variant="with-icon"
-                          size="sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <svg
-                    className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {org.projectCount || 0}
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                      Projects
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {org.memberCount || 1}
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                      Members
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+function EmptyOrganizationState({
+  searchTerm,
+  showCreateForm,
+  setShowCreateForm,
+}: Readonly<EmptyOrganizationStateProps>) {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-12 text-center">
+      <div className="max-w-md mx-auto">
+        <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-full flex items-center justify-center">
+          <svg
+            className="w-12 h-12 text-blue-600 dark:text-blue-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+            />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold mb-3 text-gray-900 dark:text-white">
+          {searchTerm ? "No matching organizations" : "No Organizations Found"}
+        </h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+          {searchTerm
+            ? `No organizations match "${searchTerm}". Try adjusting your search terms.`
+            : "You don't belong to any organizations yet. Create your first organization to start collaborating with your team."}
+        </p>
+        {!showCreateForm && !searchTerm && (
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-blue-500/25"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            Create Your First Organization
+          </button>
         )}
       </div>
     </div>
+  );
+}
+
+function OrganizationCard({ org }: Readonly<{ org: OrganizationWithDetails }>) {
+  return (
+    <Link
+      href={`/organizations/${org.id}`}
+      className="group bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl border border-gray-200 dark:border-gray-700 p-6 transition-all duration-300 hover:scale-105 hover:border-blue-300 dark:hover:border-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-500/25"
+    >
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center space-x-3 flex-1 min-w-0">
+          {org.logoUrl ? (
+            <img
+              src={org.logoUrl}
+              alt={org.name}
+              className="w-14 h-14 rounded-xl object-cover ring-2 ring-gray-200 dark:ring-gray-600 group-hover:ring-blue-300 dark:group-hover:ring-blue-600 transition-all"
+            />
+          ) : (
+            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 flex items-center justify-center ring-2 ring-gray-200 dark:ring-gray-600 group-hover:ring-blue-300 dark:group-hover:ring-blue-600 transition-all">
+              <span className="text-blue-600 dark:text-blue-400 font-bold text-lg">
+                {org.name.substring(0, 2).toUpperCase()}
+              </span>
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+              {org.name}
+            </h3>
+            <div className="flex items-center gap-2 mt-2">
+              <Badge type="role" value={org.userRole} size="sm" />
+              <Badge
+                type="plan"
+                value={org.plan}
+                variant="with-icon"
+                size="sm"
+              />
+            </div>
+          </div>
+        </div>
+        <svg
+          className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+            {org.projectCount || 0}
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+            Projects
+          </div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+            {org.memberCount || 1}
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+            Members
+          </div>
+        </div>
+      </div>
+    </Link>
   );
 }

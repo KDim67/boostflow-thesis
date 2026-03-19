@@ -6,13 +6,144 @@ import Link from "next/link";
 import { usePlatformAuth } from "@/lib/firebase/usePlatformAuth";
 
 /**
+ * Determines the active navigation tab based on current pathname
+ * Used for highlighting the current section in the sidebar
+ */
+const getActiveTab = (pathname: string) => {
+  if (pathname.includes("/platform-admin/users")) return "users";
+  if (pathname.includes("/platform-admin/organizations"))
+    return "organizations";
+  if (pathname.includes("/platform-admin/monitoring")) return "monitoring";
+  return "dashboard";
+};
+
+function UnauthorizedView({ isLoading }: Readonly<{ isLoading: boolean }>) {
+  return (
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center">
+      <div className="text-center">
+        {isLoading ? (
+          <>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+          </>
+        ) : (
+          <>
+            <div className="mb-4">
+              <svg
+                className="mx-auto h-16 w-16 text-red-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              Access Denied
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              You don't have permission to access the platform administration
+              area.
+            </p>
+            <Link
+              href="/"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Return to Home
+            </Link>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MobileHeader({
+  toggleMobileSidebar,
+}: Readonly<{
+  toggleMobileSidebar: () => void;
+}>) {
+  return (
+    <div className="fixed top-0 left-0 right-0 h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-4 z-20">
+      <button
+        onClick={toggleMobileSidebar}
+        className="p-2 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
+        aria-label="Open sidebar menu"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 6h16M4 12h16M4 18h16"
+          />
+        </svg>
+      </button>
+      <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400 ml-4">
+        BoostFlow Admin
+      </h1>
+    </div>
+  );
+}
+
+function createResizeHandler(
+  setIsMobileView: React.Dispatch<React.SetStateAction<boolean>>,
+  setIsMobileSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>
+) {
+  return () => {
+    setIsMobileView(window.innerWidth < 768);
+    if (window.innerWidth >= 768) {
+      setIsMobileSidebarOpen(false);
+    }
+  };
+}
+
+function getSidebarClassName(
+  isMobileView: boolean,
+  isSidebarCollapsed: boolean,
+  isMobileSidebarOpen: boolean
+): string {
+  const positionClass = isMobileView
+    ? "fixed inset-y-0 left-0 z-30"
+    : "fixed inset-y-0 left-0 z-10";
+  const widthClass = isSidebarCollapsed && !isMobileView ? "w-20" : "w-64";
+  const translateClass =
+    isMobileView && !isMobileSidebarOpen
+      ? "-translate-x-full"
+      : "translate-x-0";
+  return `${positionClass} ${widthClass} ${translateClass} bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-300 ease-in-out flex flex-col h-screen overflow-hidden`;
+}
+
+function getMainContentClassName(
+  isMobileView: boolean,
+  isSidebarCollapsed: boolean
+): string {
+  const topPadding = isMobileView ? "pt-16" : "";
+  let marginLeft = "";
+  if (!isMobileView && isSidebarCollapsed) marginLeft = " ml-20";
+  else if (!isMobileView) marginLeft = " ml-64";
+  return `min-h-screen overflow-auto ${topPadding}${marginLeft} transition-all duration-300 ease-in-out`;
+}
+
+/**
  * Platform Administration Layout Component
  */
 export default function PlatformAdminLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   // UI state management for responsive sidebar behavior
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Desktop sidebar collapse state
   const [isMobileView, setIsMobileView] = useState(false); // Tracks if viewport is mobile size
@@ -31,32 +162,16 @@ export default function PlatformAdminLayout({
 
   // Handle responsive behavior and window resize events
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobileView(window.innerWidth < 768);
-      if (window.innerWidth >= 768) {
-        setIsMobileSidebarOpen(false); // Auto-close mobile sidebar on desktop
-      }
-    };
-
+    const handleResize = createResizeHandler(
+      setIsMobileView,
+      setIsMobileSidebarOpen
+    );
     handleResize(); // Set initial state
-
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  /**
-   * Determines the active navigation tab based on current pathname
-   * Used for highlighting the current section in the sidebar
-   */
-  const getActiveTab = () => {
-    if (pathname.includes("/platform-admin/users")) return "users";
-    if (pathname.includes("/platform-admin/organizations"))
-      return "organizations";
-    if (pathname.includes("/platform-admin/monitoring")) return "monitoring";
-    return "dashboard";
-  };
-
-  const activeTab = getActiveTab();
+  const activeTab = getActiveTab(pathname);
 
   // Toggle functions for sidebar visibility
   const toggleMobileSidebar = () => {
@@ -68,49 +183,7 @@ export default function PlatformAdminLayout({
   };
 
   if (isLoading || !isPlatformAdmin) {
-    return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          {isLoading ? (
-            <>
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600 dark:text-gray-400">Loading...</p>
-            </>
-          ) : (
-            <>
-              <div className="mb-4">
-                <svg
-                  className="mx-auto h-16 w-16 text-red-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-                  />
-                </svg>
-              </div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                Access Denied
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                You don't have permission to access the platform administration
-                area.
-              </p>
-              <Link
-                href="/"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Return to Home
-              </Link>
-            </>
-          )}
-        </div>
-      </div>
-    );
+    return <UnauthorizedView isLoading={isLoading} />;
   }
 
   return (
@@ -126,11 +199,11 @@ export default function PlatformAdminLayout({
 
       {/* Sidebar */}
       <aside
-        className={`${isMobileView ? "fixed inset-y-0 left-0 z-30" : "fixed inset-y-0 left-0 z-10"} 
-                   ${isSidebarCollapsed && !isMobileView ? "w-20" : "w-64"} 
-                   ${isMobileView && !isMobileSidebarOpen ? "-translate-x-full" : "translate-x-0"} 
-                   bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-sm
-                   transition-all duration-300 ease-in-out flex flex-col h-screen overflow-hidden`}
+        className={getSidebarClassName(
+          isMobileView,
+          isSidebarCollapsed,
+          isMobileSidebarOpen
+        )}
         aria-label="Sidebar"
       >
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -205,22 +278,19 @@ export default function PlatformAdminLayout({
           )}
 
           <nav className="space-y-1" aria-label="Main Navigation">
-            {/* Dashboard Link */}
-            <Link
+            <NavItem
               href="/platform-admin"
-              className={`flex items-center px-3 py-2.5 text-sm font-medium rounded-md 
-                        ${activeTab === "dashboard" ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"} 
-                        group transition-colors duration-150 ease-in-out`}
-              aria-current={activeTab === "dashboard" ? "page" : undefined}
-            >
-              <span className="flex-shrink-0">
+              label="Dashboard"
+              isActive={activeTab === "dashboard"}
+              isSidebarCollapsed={isSidebarCollapsed}
+              isMobileView={isMobileView}
+              icon={
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className={`h-5 w-5 ${activeTab === "dashboard" ? "" : "text-gray-500 dark:text-gray-400"} 
-                              group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-150 ease-in-out`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  style={{ width: "100%", height: "100%" }}
                 >
                   <path
                     strokeLinecap="round"
@@ -229,31 +299,23 @@ export default function PlatformAdminLayout({
                     d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
                   />
                 </svg>
-              </span>
-              {(!isSidebarCollapsed || isMobileView) && (
-                <span className="ml-2">Dashboard</span>
-              )}
-              {isSidebarCollapsed && !isMobileView && (
-                <span className="sr-only">Dashboard</span>
-              )}
-            </Link>
+              }
+            />
 
             {/* User Management Link */}
-            <Link
+            <NavItem
               href="/platform-admin/users"
-              className={`flex items-center px-3 py-2.5 text-sm font-medium rounded-md 
-                        ${activeTab === "users" ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"} 
-                        group transition-colors duration-150 ease-in-out`}
-              aria-current={activeTab === "users" ? "page" : undefined}
-            >
-              <span className="flex-shrink-0">
+              label="User Management"
+              isActive={activeTab === "users"}
+              isSidebarCollapsed={isSidebarCollapsed}
+              isMobileView={isMobileView}
+              icon={
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className={`h-5 w-5 ${activeTab === "users" ? "" : "text-gray-500 dark:text-gray-400"} 
-                              group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-150 ease-in-out`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  style={{ width: "100%", height: "100%" }}
                 >
                   <path
                     strokeLinecap="round"
@@ -262,34 +324,24 @@ export default function PlatformAdminLayout({
                     d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
                   />
                 </svg>
-              </span>
-              {(!isSidebarCollapsed || isMobileView) && (
-                <span className="ml-2">User Management</span>
-              )}
-              {isSidebarCollapsed && !isMobileView && (
-                <span className="sr-only">User Management</span>
-              )}
-            </Link>
+              }
+            />
 
             {/* Organizations Link - Only visible to Super Admins */}
             {isSuperAdmin && (
-              <Link
+              <NavItem
                 href="/platform-admin/organizations"
-                className={`flex items-center px-3 py-2.5 text-sm font-medium rounded-md 
-                          ${activeTab === "organizations" ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"} 
-                          group transition-colors duration-150 ease-in-out`}
-                aria-current={
-                  activeTab === "organizations" ? "page" : undefined
-                }
-              >
-                <span className="flex-shrink-0">
+                label="Organizations"
+                isActive={activeTab === "organizations"}
+                isSidebarCollapsed={isSidebarCollapsed}
+                isMobileView={isMobileView}
+                icon={
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className={`h-5 w-5 ${activeTab === "organizations" ? "" : "text-gray-500 dark:text-gray-400"} 
-                                group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-150 ease-in-out`}
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
+                    style={{ width: "100%", height: "100%" }}
                   >
                     <path
                       strokeLinecap="round"
@@ -298,14 +350,8 @@ export default function PlatformAdminLayout({
                       d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
                     />
                   </svg>
-                </span>
-                {(!isSidebarCollapsed || isMobileView) && (
-                  <span className="ml-2">Organizations</span>
-                )}
-                {isSidebarCollapsed && !isMobileView && (
-                  <span className="sr-only">Organizations</span>
-                )}
-              </Link>
+                }
+              />
             )}
           </nav>
         </div>
@@ -351,42 +397,59 @@ export default function PlatformAdminLayout({
 
       {/* Mobile header with hamburger menu */}
       {isMobileView && (
-        <div className="fixed top-0 left-0 right-0 h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-4 z-20">
-          <button
-            onClick={toggleMobileSidebar}
-            className="p-2 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
-            aria-label="Open sidebar menu"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            </svg>
-          </button>
-          <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400 ml-4">
-            BoostFlow Admin
-          </h1>
-        </div>
+        <MobileHeader toggleMobileSidebar={toggleMobileSidebar} />
       )}
 
       {/* Main content */}
       <div
-        className={`min-h-screen overflow-auto ${
-          isMobileView ? "pt-16" : isSidebarCollapsed ? "ml-20" : "ml-64"
-        } transition-all duration-300 ease-in-out`}
+        className={getMainContentClassName(isMobileView, isSidebarCollapsed)}
       >
         {/* Content */}
         <main className="p-6">{children}</main>
       </div>
     </div>
+  );
+}
+
+interface NavItemProps {
+  href: string;
+  label: string;
+  isActive: boolean;
+  isSidebarCollapsed: boolean;
+  isMobileView: boolean;
+  icon: React.ReactNode;
+}
+
+function NavItem({
+  href,
+  label,
+  isActive,
+  isSidebarCollapsed,
+  isMobileView,
+  icon,
+}: Readonly<NavItemProps>) {
+  return (
+    <Link
+      href={href}
+      className={`flex items-center px-3 py-2.5 text-sm font-medium rounded-md 
+                ${isActive ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"} 
+                group transition-colors duration-150 ease-in-out`}
+      aria-current={isActive ? "page" : undefined}
+    >
+      <span className="flex-shrink-0">
+        <div
+          className={`h-5 w-5 ${isActive ? "" : "text-gray-500 dark:text-gray-400"} 
+                      group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-150 ease-in-out`}
+        >
+          {icon}
+        </div>
+      </span>
+      {(!isSidebarCollapsed || isMobileView) && (
+        <span className="ml-2">{label}</span>
+      )}
+      {isSidebarCollapsed && !isMobileView && (
+        <span className="sr-only">{label}</span>
+      )}
+    </Link>
   );
 }

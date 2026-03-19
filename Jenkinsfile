@@ -51,7 +51,7 @@ pipeline {
                     
                     // Run npm audit and save report
                     def auditResult = sh(
-                        script: 'npm audit --audit-level=high --json > ${REPORTS_DIR}/npm-audit.json || true',
+                        script: 'npm audit --audit-level=high --json > ${REPORTS_DIR}/npm-audit.json',
                         returnStatus: true
                     )
                     
@@ -159,6 +159,13 @@ pipeline {
                     
                     echo 'Checkov Dockerfile scan completed'
                 }
+            }
+        }
+        
+        stage('Quality Gate - Tests') {
+            steps {
+                echo 'Running unit tests with coverage...'
+                sh 'npm run test:coverage -- --ci'
             }
         }
         

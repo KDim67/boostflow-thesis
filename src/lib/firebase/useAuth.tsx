@@ -5,6 +5,8 @@ import {
   useContext,
   useEffect,
   useState,
+  useMemo,
+  useCallback,
   ReactNode,
 } from "react";
 import { User, UserCredential } from "firebase/auth";
@@ -13,7 +15,6 @@ import {
   loginUser,
   logoutUser,
   resetPassword,
-  getCurrentUser,
   subscribeToAuthChanges,
   signInWithGoogle,
   sendVerificationEmail,
@@ -51,7 +52,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  * Wraps the application and provides authentication state and methods to child components
  * Manages user state, loading states, and error handling for all auth operations
  */
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   // Authentication state management
   const [user, setUser] = useState<User | null>(null); // Current user object
   const [loading, setLoading] = useState(true); // Loading state for auth operations
@@ -73,35 +74,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * User registration function
    * Creates a new user account and syncs their profile data
    */
-  const signup = async (
-    email: string,
-    password: string,
-    displayName?: string
-  ) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const userCredential = await registerUser(email, password, displayName);
+  const signup = useCallback(
+    async (email: string, password: string, displayName?: string) => {
+      try {
+        setLoading(true);
+        setError(null);
+        const userCredential = await registerUser(email, password, displayName);
 
-      // Sync user profile data after successful registration
-      if (userCredential.user) {
-        await syncUserProfile(userCredential.user);
+        // Sync user profile data after successful registration
+        if (userCredential.user) {
+          await syncUserProfile(userCredential.user);
+        }
+
+        return userCredential;
+      } catch (err: unknown) {
+        const errorMessage =
+          err instanceof Error ? err.message : "An error occurred";
+        setError(errorMessage);
+        throw err; // Re-throw to allow component-level error handling
+      } finally {
+        setLoading(false); // Always reset loading state
       }
-
-      return userCredential;
-    } catch (err: any) {
-      setError(err.message || "Failed to create an account");
-      throw err; // Re-throw to allow component-level error handling
-    } finally {
-      setLoading(false); // Always reset loading state
-    }
-  };
+    },
+    []
+  );
 
   /**
    * User login function
    * Authenticates user with email/password and syncs profile data
    */
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -113,36 +115,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       return userCredential;
-    } catch (err: any) {
-      setError(err.message || "Failed to log in");
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to log in";
+      setError(errorMessage);
       throw err; // Re-throw to allow component-level error handling
     } finally {
       setLoading(false); // Always reset loading state
     }
-  };
+  }, []);
 
   /**
    * User logout function
    * Signs out the current user and clears authentication state
    */
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       await logoutUser();
-    } catch (err: any) {
-      setError(err.message || "Failed to log out");
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to log out";
+      setError(errorMessage);
       throw err; // Re-throw to allow component-level error handling
     } finally {
       setLoading(false); // Always reset loading state
     }
-  };
+  }, []);
 
   /**
    * Google OAuth login function
    * Authenticates user with Google OAuth and syncs profile data
    */
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -154,67 +160,91 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       return userCredential;
-    } catch (err: any) {
-      setError(err.message || "Failed to sign in with Google");
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to sign in with Google";
+      setError(errorMessage);
       throw err; // Re-throw to allow component-level error handling
     } finally {
       setLoading(false); // Always reset loading state
     }
-  };
+  }, []);
 
   /**
    * Password reset function
    * Sends a password reset email to the specified email address
    */
-  const forgotPassword = async (email: string) => {
+  const forgotPassword = useCallback(async (email: string) => {
     try {
       setLoading(true);
       setError(null);
       await resetPassword(email);
-    } catch (err: any) {
-      setError(err.message || "Failed to send password reset email");
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to send password reset email";
+      setError(errorMessage);
       throw err; // Re-throw to allow component-level error handling
     } finally {
       setLoading(false); // Always reset loading state
     }
-  };
+  }, []);
 
   /**
    * Email verification wrapper function
    * Sends an email verification to the specified user
    * Note: Does not set loading state as this is typically a background operation
    */
-  const sendEmailVerificationWrapper = async (user: User) => {
+  const sendEmailVerificationWrapper = useCallback(async (user: User) => {
     try {
       setError(null);
       await sendVerificationEmail(user);
-    } catch (err: any) {
-      setError(err.message || "Failed to send verification email");
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to send verification email";
+      setError(errorMessage);
       throw err; // Re-throw to allow component-level error handling
     }
-  };
+  }, []);
 
   /**
    * Error clearing function
    * Resets the error state to null, typically called when dismissing error messages
    */
-  const clearError = () => {
+  const clearError = useCallback(() => {
     setError(null);
-  };
+  }, []);
 
   // Context value object containing all auth state and methods
-  const value = {
-    user,
-    loading,
-    error,
-    signup,
-    login,
-    loginWithGoogle,
-    logout,
-    forgotPassword,
-    sendEmailVerification: sendEmailVerificationWrapper,
-    clearError,
-  };
+  const value = useMemo(
+    () => ({
+      user,
+      loading,
+      error,
+      signup,
+      login,
+      loginWithGoogle,
+      logout,
+      forgotPassword,
+      sendEmailVerification: sendEmailVerificationWrapper,
+      clearError,
+    }),
+    [
+      user,
+      loading,
+      error,
+      signup,
+      login,
+      loginWithGoogle,
+      logout,
+      forgotPassword,
+      sendEmailVerificationWrapper,
+      clearError,
+    ]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

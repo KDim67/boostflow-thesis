@@ -5,7 +5,6 @@ import {
   updateIntegration,
   syncIntegration,
   getAvailableProviders,
-  createIntegration,
   getAllIntegrations,
   deleteIntegration,
 } from "@/lib/services/integration/integrationService";
@@ -21,7 +20,6 @@ import {
  * Supports both viewing all integrations and managing a specific integration
  */
 interface IntegrationSettingsProps {
-  currentUser: string; // Current authenticated user identifier
   integrationId?: string; // Optional specific integration to manage
   organizationId?: string; // Optional organization context for new integrations
   projectId?: string; // Optional project context for new integrations
@@ -41,11 +39,10 @@ interface IntegrationSettingsProps {
  * 2. Detail mode: Shows detailed settings for a specific integration
  */
 export default function IntegrationSettings({
-  currentUser,
   integrationId,
   organizationId,
   projectId,
-}: IntegrationSettingsProps) {
+}: Readonly<IntegrationSettingsProps>) {
   const [integration, setIntegration] = useState<Integration | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [availableProviders, setAvailableProviders] = useState<
@@ -130,9 +127,7 @@ export default function IntegrationSettings({
       }
 
       // Generate cryptographically secure state parameter for CSRF protection
-      const state =
-        Math.random().toString(36).substring(2, 15) +
-        Math.random().toString(36).substring(2, 15);
+      const state = crypto.randomUUID().replaceAll("-", "");
 
       // Store OAuth context in localStorage for callback processing
       localStorage.setItem("oauth_provider", provider);
@@ -144,8 +139,8 @@ export default function IntegrationSettings({
       // Configure OAuth parameters
       const oauthConfig: OAuthConfig = {
         clientId,
-        redirectUri: `${window.location.origin}/oauth/callback`,
-        scopes: getProviderScopes(provider as any),
+        redirectUri: `${globalThis.location.origin}/oauth/callback`,
+        scopes: getProviderScopes(provider),
       };
 
       // Generate provider-specific authorization URL
@@ -176,7 +171,7 @@ export default function IntegrationSettings({
       });
 
       // Redirect to provider's authorization page
-      window.location.href = authUrl;
+      globalThis.location.href = authUrl;
     } catch (err) {
       console.error("OAuth connection error:", err);
       setError(`Failed to connect to ${provider}. Please try again.`);
@@ -448,11 +443,11 @@ export default function IntegrationSettings({
             <span
               className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${integration.status === "active" ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"}`}
             >
-              {integration.status === "active"
-                ? "Active"
-                : integration.status === "error"
-                  ? "Error"
-                  : "Inactive"}
+              {(() => {
+                if (integration.status === "active") return "Active";
+                if (integration.status === "error") return "Error";
+                return "Inactive";
+              })()}
             </span>
             <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
               Last synced:{" "}
@@ -527,10 +522,15 @@ export default function IntegrationSettings({
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="integration-name-pyo4v"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Integration Name
               </label>
+              \n{" "}
               <input
+                id="integration-name-pyo4v"
                 type="text"
                 value={integration.name}
                 disabled
@@ -539,10 +539,15 @@ export default function IntegrationSettings({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="provider-q88ob"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Provider
               </label>
+              \n{" "}
               <input
+                id="provider-q88ob"
                 type="text"
                 value={integration.provider}
                 disabled
@@ -551,10 +556,15 @@ export default function IntegrationSettings({
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="description-b2arv"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Description
               </label>
+              \n{" "}
               <textarea
+                id="description-b2arv"
                 value={integration.description}
                 disabled
                 className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-3 py-2 text-sm disabled:opacity-75"
@@ -563,10 +573,15 @@ export default function IntegrationSettings({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="integration-type-yxq99"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Integration Type
               </label>
+              \n{" "}
               <input
+                id="integration-type-yxq99"
                 type="text"
                 value={integration.type}
                 disabled
@@ -575,10 +590,15 @@ export default function IntegrationSettings({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="status-0134x"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Status
               </label>
+              \n{" "}
               <input
+                id="status-0134x"
                 type="text"
                 value={integration.status}
                 disabled
@@ -611,13 +631,13 @@ export default function IntegrationSettings({
           </div>
 
           <div className="space-y-4">
-            {Object.entries(integration.credentials).map(([key, value]) => (
+            {Object.entries(integration.credentials).map(([key]) => (
               <div key={key} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 capitalize">
                     {key
-                      .replace(/([A-Z])/g, " $1")
-                      .replace(/_/g, " ")
+                      .replaceAll(/([A-Z])/g, " $1")
+                      .replaceAll("_", " ")
                       .trim()}
                   </label>
                 </div>

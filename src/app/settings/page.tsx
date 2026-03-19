@@ -6,12 +6,10 @@ import { sendVerificationEmail } from "@/lib/firebase/authService";
 import {
   getUserProfile,
   updateUserProfile,
-  UserProfile,
 } from "@/lib/firebase/userProfileService";
 import {
   updatePassword,
   updateProfile,
-  updateEmail,
   verifyBeforeUpdateEmail,
   reauthenticateWithCredential,
   EmailAuthProvider,
@@ -39,6 +37,14 @@ interface SettingsFormData {
 }
 
 /**
+ * Type alias for Firebase authentication errors
+ */
+type FirebaseAuthError = {
+  code?: string;
+  message?: string;
+};
+
+/**
  * Main settings page component that provides user account management functionality
  * Includes tabs for account info, security settings, notifications, and integrations
  */
@@ -53,7 +59,6 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false); // General saving state for forms
 
   // User data state
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   // File upload functionality
   const fileInputRef = useRef<HTMLInputElement>(null); // Reference to hidden file input
@@ -110,7 +115,6 @@ export default function SettingsPage() {
       try {
         const profile = await getUserProfile(user.uid);
         if (profile) {
-          setUserProfile(profile);
           // Populate form with existing profile data, using fallbacks for missing fields
           setFormData((prev) => ({
             ...prev,
@@ -172,7 +176,12 @@ export default function SettingsPage() {
    * Converts cropped area to blob, uploads to storage, and updates user profile
    * @param croppedAreaPixels - Pixel coordinates of the cropped area
    */
-  const handleCropComplete = async (croppedAreaPixels: any) => {
+  const handleCropComplete = async (croppedAreaPixels: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => {
     try {
       if (!selectedImage) return;
 
@@ -187,39 +196,36 @@ export default function SettingsPage() {
       });
 
       // Upload the cropped image with success/error callbacks
-      const result = await uploadProfilePicture(croppedFile, {
-        onSuccess: async (result) => {
-          // Update local form state with new image URL
+      await uploadProfilePicture(croppedFile, {
+        onSuccess: (result) => {
           setFormData((prev) => ({ ...prev, profilePicture: result.url }));
 
-          // Update the user profile in the database
           if (user) {
-            try {
-              await updateUserProfile(user.uid, {
-                profilePicture: result.url,
-              });
+            updateUserProfile(user.uid, {
+              profilePicture: result.url,
+            })
+              .then(() => {
+                globalThis.dispatchEvent(
+                  new CustomEvent("profilePictureUpdated", {
+                    detail: { profilePicture: result.url },
+                  })
+                );
 
-              // Trigger navbar refresh by dispatching a custom event
-              window.dispatchEvent(
-                new CustomEvent("profilePictureUpdated", {
-                  detail: { profilePicture: result.url },
-                })
-              );
-
-              setMessage({
-                type: "success",
-                text: "Profile picture updated successfully",
+                setMessage({
+                  type: "success",
+                  text: "Profile picture updated successfully",
+                });
+              })
+              .catch((error) => {
+                console.error(
+                  "Error updating profile picture in database:",
+                  error
+                );
+                setMessage({
+                  type: "error",
+                  text: "Failed to save profile picture",
+                });
               });
-            } catch (error) {
-              console.error(
-                "Error updating profile picture in database:",
-                error
-              );
-              setMessage({
-                type: "error",
-                text: "Failed to save profile picture",
-              });
-            }
           }
         },
         onError: (error) => {
@@ -274,7 +280,7 @@ export default function SettingsPage() {
       }
 
       // Trigger navbar refresh by dispatching a custom event
-      window.dispatchEvent(
+      globalThis.dispatchEvent(
         new CustomEvent("profilePictureUpdated", {
           detail: { profilePicture: "" },
         })
@@ -366,10 +372,11 @@ export default function SettingsPage() {
       }));
 
       setMessage({ type: "success", text: "Password updated successfully" });
-    } catch (error: any) {
-      console.error("Error updating password:", error);
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
+      console.error("Error updating password:", err);
       // Handle specific Firebase Auth errors with user-friendly messages
-      if (error.code === "auth/requires-recent-login") {
+      if (err.code === "auth/requires-recent-login") {
         setMessage({
           type: "error",
           text: "Please log out and log back in before changing your password",
@@ -433,8 +440,9 @@ export default function SettingsPage() {
         type: "success",
         text: "Verification email sent! Please check your inbox.",
       });
-    } catch (error: any) {
-      console.error("Error sending verification email:", error);
+    } catch (error: unknown) {
+      const err = error as FirebaseAuthError;
+      console.error("Error sending verification email:", err);
       setMessage({
         type: "error",
         text: "Failed to send verification email. Please try again.",
@@ -453,7 +461,13 @@ export default function SettingsPage() {
     e.preventDefault();
 
     // Validate required fields are present
-    if (!user || !formData.newEmail || !formData.currentPassword) {
+    const userEmail = user?.email;
+    if (
+      !user ||
+      !userEmail ||
+      !formData.newEmail ||
+      !formData.currentPassword
+    ) {
       setMessage({ type: "error", text: "Please fill in all required fields" });
       return;
     }
@@ -464,7 +478,7 @@ export default function SettingsPage() {
     try {
       // Reauthenticate user before changing email
       const credential = EmailAuthProvider.credential(
-        user.email!,
+        userEmail,
         formData.currentPassword
       );
       await reauthenticateWithCredential(user, credential);
@@ -492,28 +506,29 @@ export default function SettingsPage() {
         type: "success",
         text: `Verification email sent to ${formData.newEmail}! Please check your inbox and click the verification link to complete the email change. Your email will be updated automatically after verification.`,
       });
-    } catch (error: any) {
-      console.error("Error updating email:", error);
+    } catch (error: unknown) {
+      const err = error as FirebaseAuthError;
+      console.error("Error updating email:", err);
 
       // Handle specific Firebase Auth errors with user-friendly messages
-      if (error.code === "auth/wrong-password") {
+      if (err.code === "auth/wrong-password") {
         setMessage({ type: "error", text: "Current password is incorrect" });
-      } else if (error.code === "auth/email-already-in-use") {
+      } else if (err.code === "auth/email-already-in-use") {
         setMessage({
           type: "error",
           text: "This email is already in use by another account",
         });
-      } else if (error.code === "auth/invalid-email") {
+      } else if (err.code === "auth/invalid-email") {
         setMessage({
           type: "error",
           text: "Please enter a valid email address",
         });
-      } else if (error.code === "auth/requires-recent-login") {
+      } else if (err.code === "auth/requires-recent-login") {
         setMessage({
           type: "error",
           text: "Please log out and log back in before changing your email",
         });
-      } else if (error.code === "auth/too-many-requests") {
+      } else if (err.code === "auth/too-many-requests") {
         setMessage({
           type: "error",
           text: "Too many failed attempts. Please try again later.",
@@ -521,7 +536,7 @@ export default function SettingsPage() {
       } else {
         setMessage({
           type: "error",
-          text: `Failed to send verification email: ${error.message || "Please try again."}`,
+          text: `Failed to send verification email: ${err.message || "Please try again."}`,
         });
       }
     } finally {
@@ -688,10 +703,14 @@ export default function SettingsPage() {
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label
+                        htmlFor="firstName"
+                        className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
                         First Name
                       </label>
                       <input
+                        id="firstName"
                         type="text"
                         value={formData.firstName}
                         onChange={(e) =>
@@ -701,10 +720,14 @@ export default function SettingsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label
+                        htmlFor="lastName"
+                        className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
                         Last Name
                       </label>
                       <input
+                        id="lastName"
                         type="text"
                         value={formData.lastName}
                         onChange={(e) =>
@@ -714,10 +737,14 @@ export default function SettingsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label
+                        htmlFor="displayName"
+                        className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
                         Display Name
                       </label>
                       <input
+                        id="displayName"
                         type="text"
                         value={formData.displayName}
                         onChange={(e) =>
@@ -727,10 +754,14 @@ export default function SettingsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label
+                        htmlFor="email"
+                        className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
                         Email Address
                       </label>
                       <input
+                        id="email"
                         type="email"
                         value={formData.email}
                         disabled
@@ -814,10 +845,14 @@ export default function SettingsPage() {
                     </h3>
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label
+                          htmlFor="newEmail"
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
                           New Email Address
                         </label>
                         <input
+                          id="newEmail"
                           type="email"
                           value={formData.newEmail}
                           onChange={(e) =>
@@ -828,10 +863,14 @@ export default function SettingsPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label
+                          htmlFor="currentPassword"
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
                           Current Password
                         </label>
                         <input
+                          id="currentPassword"
                           type="password"
                           value={formData.currentPassword}
                           onChange={(e) =>
@@ -873,10 +912,14 @@ export default function SettingsPage() {
                     </h3>
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label
+                          htmlFor="newPassword"
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
                           New Password
                         </label>
                         <input
+                          id="newPassword"
                           type="password"
                           value={formData.newPassword}
                           onChange={(e) =>
@@ -887,10 +930,14 @@ export default function SettingsPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label
+                          htmlFor="confirmPassword"
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
                           Confirm New Password
                         </label>
                         <input
+                          id="confirmPassword"
                           type="password"
                           value={formData.confirmPassword}
                           onChange={(e) =>
@@ -943,8 +990,12 @@ export default function SettingsPage() {
                           Show notification tab in the navigation bar
                         </p>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
+                      <label
+                        htmlFor="websiteNotifications"
+                        className="relative inline-flex items-center cursor-pointer"
+                      >
                         <input
+                          id="websiteNotifications"
                           type="checkbox"
                           checked={formData.websiteNotifications}
                           onChange={(e) =>
@@ -956,6 +1007,9 @@ export default function SettingsPage() {
                           className="sr-only peer"
                         />
                         <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        <span className="sr-only">
+                          Toggle Website Notifications
+                        </span>
                       </label>
                     </div>
                   </div>

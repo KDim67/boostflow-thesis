@@ -48,7 +48,7 @@ export class NotificationService {
     type: NotificationType,
     organizationId?: string,
     actionUrl?: string,
-    metadata?: { [key: string]: any }
+    metadata?: { [key: string]: unknown }
   ): Promise<string> {
     try {
       // Generate a new document reference with auto-generated ID

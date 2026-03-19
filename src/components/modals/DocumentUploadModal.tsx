@@ -13,7 +13,7 @@ interface DocumentUploadModalProps {
   projectId: string; // Target project identifier
   organizationId: string; // Organization context for the upload
   folders: string[]; // Available folder options for document organization
-  onUploadSuccess: (document: any) => void; // Callback fired when upload completes successfully
+  onUploadSuccess: (document: unknown) => void; // Callback fired when upload completes successfully
 }
 
 /**
@@ -28,7 +28,7 @@ export default function DocumentUploadModal({
   organizationId,
   folders,
   onUploadSuccess,
-}: DocumentUploadModalProps) {
+}: Readonly<DocumentUploadModalProps>) {
   // Default folder selection - 'General' is the fallback folder
   const [selectedFolder, setSelectedFolder] = useState("General");
   // Tracks drag-and-drop UI state for visual feedback
@@ -108,7 +108,7 @@ export default function DocumentUploadModal({
     setDragActive(false);
 
     // Process dropped files if any exist
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    if (e.dataTransfer.files?.[0]) {
       handleFileSelect(e.dataTransfer.files);
     }
   };
@@ -146,10 +146,14 @@ export default function DocumentUploadModal({
         <div className="p-6">
           {/* Folder Selection */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label
+              htmlFor="folder-select"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            >
               Select Folder
             </label>
             <select
+              id="folder-select"
               value={selectedFolder}
               onChange={(e) => setSelectedFolder(e.target.value)}
               disabled={uploading}
@@ -164,16 +168,21 @@ export default function DocumentUploadModal({
           </div>
 
           {/* File Upload Area */}
-          <div
-            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+          <button
+            type="button"
+            className={`w-full border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
               dragActive
                 ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
                 : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
-            } ${uploading ? "opacity-50 pointer-events-none" : ""}`}
+            } ${uploading ? "opacity-50 pointer-events-none" : "cursor-pointer"}`}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
             onDrop={handleDrop}
+            onClick={() => {
+              if (!uploading) fileInputRef.current?.click();
+            }}
+            disabled={uploading}
           >
             <input
               ref={fileInputRef}
@@ -225,7 +234,7 @@ export default function DocumentUploadModal({
                 </div>
               )}
             </div>
-          </div>
+          </button>
 
           {/* Action Buttons */}
           <div className="flex justify-end space-x-3 mt-6">

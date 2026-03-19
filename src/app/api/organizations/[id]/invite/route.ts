@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { inviteTeamMember } from "@/lib/firebase/organizationService";
-import { getAuth } from "firebase-admin/auth";
-import { adminApp } from "@/lib/firebase/admin";
 import { OrganizationRole } from "@/lib/types/organization";
-
-const auth = getAuth(adminApp);
+import { requireBearerToken } from "@/lib/api/authHelper";
 
 export async function POST(
   request: NextRequest,
@@ -15,27 +12,9 @@ export async function POST(
     const body = await request.json();
     const { email, role = "member" } = body;
 
-    // Get the authorization header
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json(
-        { success: false, error: "Authorization header missing or invalid" },
-        { status: 401 }
-      );
-    }
-
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-
-    // Verify the Firebase ID token
-    const decodedToken = await auth.verifyIdToken(token);
-    if (!decodedToken) {
-      return NextResponse.json(
-        { success: false, error: "Invalid or expired token" },
-        { status: 401 }
-      );
-    }
-
-    const inviterUserId = decodedToken.uid;
+    const authResult = await requireBearerToken(request);
+    if (authResult instanceof NextResponse) return authResult;
+    const inviterUserId = authResult.uid;
 
     // Validate input
     if (!email || !organizationId) {

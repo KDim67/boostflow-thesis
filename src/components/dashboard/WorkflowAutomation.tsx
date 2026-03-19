@@ -2,19 +2,23 @@ import React, { useState, useEffect } from "react";
 import {
   Workflow,
   WorkflowStep,
+  StepConfig,
+  WorkflowTaskData,
   createWorkflow,
   getWorkflow,
   updateWorkflow,
   executeWorkflow,
-  TRIGGER_TYPES,
   ACTION_TYPES,
   CONDITION_TYPES,
+  ConditionConfig,
+  ActionConfig,
   TASK_STATUSES,
   TASK_PRIORITIES,
   WorkflowTemplate,
   getWorkflowTemplates,
   createWorkflowFromTemplate,
 } from "@/lib/services/automation/workflowService";
+import { Task } from "@/lib/types/task";
 import { queryDocuments } from "@/lib/firebase/firestoreService";
 import { where } from "firebase/firestore";
 
@@ -40,6 +44,22 @@ interface TeamMember {
   role: string;
 }
 
+type UIStepConfig = StepConfig & {
+  triggerType?: string;
+  conditionType?: string;
+  actionType?: string;
+  taskId?: string;
+  expectedValue?: string;
+  percentage?: number;
+  assignee?: string;
+  dueDate?: string;
+  priority?: string;
+  status?: string;
+  title?: string;
+  description?: string;
+  taskData?: WorkflowTaskData;
+};
+
 /**
  * WorkflowAutomation Component
  *
@@ -56,7 +76,7 @@ export default function WorkflowAutomation({
   projectId,
   currentUser,
   organizationId,
-}: WorkflowAutomationProps) {
+}: Readonly<WorkflowAutomationProps>) {
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [workflowName, setWorkflowName] = useState("New Workflow");
@@ -66,8 +86,7 @@ export default function WorkflowAutomation({
   const [isExecuting, setIsExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeStepIndex, setActiveStepIndex] = useState<number | null>(null);
-  const [executionResult, setExecutionResult] = useState<string | null>(null);
-  const [triggerStep, setTriggerStep] = useState<WorkflowStep | null>(null);
+  // Removed unused state variables
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [availableTasks, setAvailableTasks] = useState<
     Array<{ id: string; title: string }>
@@ -76,8 +95,6 @@ export default function WorkflowAutomation({
   const [availableTemplates, setAvailableTemplates] = useState<
     WorkflowTemplate[]
   >([]);
-  const [selectedTemplate, setSelectedTemplate] =
-    useState<WorkflowTemplate | null>(null);
 
   /**
    * Initialize component based on props
@@ -130,7 +147,7 @@ export default function WorkflowAutomation({
       ]);
       // Extract only id and title for dropdown options
       setAvailableTasks(
-        tasksData.map((task: any) => ({
+        tasksData.map((task: Task) => ({
           id: task.id,
           title: task.title,
         }))
@@ -154,12 +171,6 @@ export default function WorkflowAutomation({
         setWorkflowDescription(loadedWorkflow.description);
         setSteps(loadedWorkflow.steps);
         setIsActive(loadedWorkflow.isActive);
-
-        // Find and set the trigger step reference
-        const trigger = loadedWorkflow.steps.find(
-          (step) => step.id === loadedWorkflow.triggerStep
-        );
-        setTriggerStep(trigger || null);
       } else {
         setError("Workflow not found");
       }
@@ -187,7 +198,20 @@ export default function WorkflowAutomation({
 
       const triggerStep = steps.find((step) => step.type === "trigger");
 
-      if (!workflow) {
+      if (workflow) {
+        // Updating existing workflow
+        const updatedWorkflow = await updateWorkflow(workflow.id, {
+          name: workflowName,
+          description: workflowDescription,
+          isActive,
+          steps,
+          triggerStep: triggerStep?.id || "",
+        });
+
+        if (updatedWorkflow) {
+          setWorkflow(updatedWorkflow);
+        }
+      } else {
         // Creating new workflow
         if (!projectId) {
           setError("Project ID is required to create a workflow");
@@ -206,19 +230,6 @@ export default function WorkflowAutomation({
         });
 
         setWorkflow(newWorkflow);
-      } else {
-        // Updating existing workflow
-        const updatedWorkflow = await updateWorkflow(workflow.id, {
-          name: workflowName,
-          description: workflowDescription,
-          isActive,
-          steps,
-          triggerStep: triggerStep?.id || "",
-        });
-
-        if (updatedWorkflow) {
-          setWorkflow(updatedWorkflow);
-        }
       }
     } catch (err) {
       console.error("Error saving workflow:", err);
@@ -263,12 +274,29 @@ export default function WorkflowAutomation({
    * Creates a step with default configuration and automatically selects it for editing
    */
   const addStep = (type: WorkflowStep["type"]) => {
+    const getDefaultConfig = (stepType: WorkflowStep["type"]): StepConfig => {
+      switch (stepType) {
+        case "trigger":
+          return { triggerType: "manual" };
+        case "condition":
+          return {
+            conditionType: "task.status.equals",
+            expectedValue: "pending",
+          };
+        case "action":
+          return {
+            actionType: "task.create",
+            taskData: {},
+          };
+      }
+    };
+
     const newStep: WorkflowStep = {
       id: `step-${Date.now()}`, // Generate unique ID using timestamp
       type,
       name: `New ${type.charAt(0).toUpperCase() + type.slice(1)} Step`,
       description: `This is a new ${type} step`,
-      config: {}, // Empty config to be filled by user
+      config: getDefaultConfig(type),
       nextSteps: [], // No connections initially
     };
 
@@ -281,9 +309,9 @@ export default function WorkflowAutomation({
    * Uses partial updates to modify only the specified fields
    */
   const updateStep = (index: number, updates: Partial<WorkflowStep>) => {
-    const updatedSteps = [...steps];
-    updatedSteps[index] = { ...updatedSteps[index], ...updates };
-    setSteps(updatedSteps);
+    setSteps((prevSteps) =>
+      prevSteps.map((step, i) => (i === index ? { ...step, ...updates } : step))
+    );
   };
 
   /**
@@ -297,11 +325,13 @@ export default function WorkflowAutomation({
       return;
     }
 
-    const updatedSteps = steps.filter((_, i) => i !== index);
+    const remainingSteps = steps.filter((_, i) => i !== index);
 
     // Clean up any connections to the removed step
-    const removedStepId = steps[index].id;
-    const stepsWithUpdatedRefs = updatedSteps.map((step) => ({
+    const removedStepId = steps.find((_, i) => i === index)?.id;
+    if (!removedStepId) return;
+
+    const stepsWithUpdatedRefs = remainingSteps.map((step) => ({
       ...step,
       nextSteps: step.nextSteps.filter((id) => id !== removedStepId),
     }));
@@ -315,44 +345,48 @@ export default function WorkflowAutomation({
    * Validates connection rules (e.g., cannot connect to trigger steps)
    */
   const connectSteps = (fromIndex: number, toIndex: number) => {
-    const fromStep = steps[fromIndex];
-    const toStep = steps[toIndex];
-
-    // Prevent connections to trigger steps (they must be entry points)
-    if (toStep.type === "trigger") {
-      setError("Cannot connect to a trigger step");
-      return;
-    }
-
-    // Prevent duplicate connections
-    if (fromStep.nextSteps.includes(toStep.id)) {
-      return;
-    }
-
     // Add the connection
-    const updatedSteps = [...steps];
-    updatedSteps[fromIndex] = {
-      ...fromStep,
-      nextSteps: [...fromStep.nextSteps, toStep.id],
-    };
+    setSteps((prevSteps) => {
+      const fromStep = prevSteps.find((_, i) => i === fromIndex);
+      const toStep = prevSteps.find((_, i) => i === toIndex);
 
-    setSteps(updatedSteps);
+      if (
+        !fromStep ||
+        !toStep ||
+        toStep.type === "trigger" ||
+        fromStep.nextSteps.includes(toStep.id)
+      ) {
+        if (toStep?.type === "trigger")
+          setError("Cannot connect to a trigger step");
+        return prevSteps;
+      }
+
+      return prevSteps.map((step, i) =>
+        i === fromIndex
+          ? { ...step, nextSteps: [...step.nextSteps, toStep.id] }
+          : step
+      );
+    });
   };
 
   /**
    * Removes a connection between two workflow steps
    */
   const disconnectSteps = (fromIndex: number, toIndex: number) => {
-    const fromStep = steps[fromIndex];
-    const toStep = steps[toIndex];
+    setSteps((prevSteps) => {
+      const toStep = prevSteps[toIndex];
+      if (!toStep) return prevSteps;
 
-    const updatedSteps = [...steps];
-    updatedSteps[fromIndex] = {
-      ...fromStep,
-      nextSteps: fromStep.nextSteps.filter((id) => id !== toStep.id),
-    };
-
-    setSteps(updatedSteps);
+      const newSteps = [...prevSteps];
+      const fromStep = newSteps[fromIndex];
+      if (fromStep) {
+        newSteps[fromIndex] = {
+          ...fromStep,
+          nextSteps: fromStep.nextSteps.filter((id) => id !== toStep.id),
+        };
+      }
+      return newSteps;
+    });
   };
 
   /**
@@ -360,15 +394,12 @@ export default function WorkflowAutomation({
    * Populates the workflow with template data and switches to editor mode
    */
   const handleTemplateSelect = (template: WorkflowTemplate) => {
-    setSelectedTemplate(template);
     setWorkflowName(template.name);
     setWorkflowDescription(template.description);
 
     // Create workflow steps from template
-    const { steps: templateSteps, triggerStep: templateTriggerStep } =
-      createWorkflowFromTemplate(template);
+    const { steps: templateSteps } = createWorkflowFromTemplate(template);
     setSteps(templateSteps);
-    setTriggerStep(templateTriggerStep);
     setShowTemplateSelection(false); // Switch to editor mode
   };
 
@@ -389,7 +420,6 @@ export default function WorkflowAutomation({
 
     // Initialize workflow with minimal setup
     setSteps([manualTriggerStep]);
-    setTriggerStep(manualTriggerStep);
     setWorkflowName("New Workflow");
     setWorkflowDescription("");
     setShowTemplateSelection(false); // Switch to editor mode
@@ -402,8 +432,6 @@ export default function WorkflowAutomation({
   const handleBackToTemplates = () => {
     setShowTemplateSelection(true);
     setSteps([]); // Clear current workflow
-    setTriggerStep(null);
-    setSelectedTemplate(null);
   };
 
   // Render template selection screen when creating a new workflow
@@ -423,10 +451,11 @@ export default function WorkflowAutomation({
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             {availableTemplates.map((template) => (
-              <div
+              <button
+                type="button"
                 key={template.id}
                 onClick={() => handleTemplateSelect(template)}
-                className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-500 dark:hover:border-blue-400 cursor-pointer transition-colors group"
+                className="w-full text-left p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-500 dark:hover:border-blue-400 cursor-pointer transition-colors group"
               >
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
@@ -455,7 +484,7 @@ export default function WorkflowAutomation({
                   </svg>
                   {template.steps.length} steps
                 </div>
-              </div>
+              </button>
             ))}
           </div>
 
@@ -751,721 +780,235 @@ export default function WorkflowAutomation({
             </div>
           ) : (
             <div className="space-y-4">
-              {steps.map((step, index) => (
-                <div
-                  key={step.id}
-                  className={`p-4 rounded-lg border ${activeStepIndex === index ? "border-blue-500 dark:border-blue-400 ring-2 ring-blue-500/30" : "border-gray-200 dark:border-gray-700"} ${step.type === "trigger" ? "bg-blue-50 dark:bg-blue-900/20" : step.type === "condition" ? "bg-yellow-50 dark:bg-yellow-900/20" : "bg-green-50 dark:bg-green-900/20"}`}
-                  onClick={() => setActiveStepIndex(index)}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center">
-                      <div
-                        className={`p-1.5 rounded-md mr-2 ${step.type === "trigger" ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400" : step.type === "condition" ? "bg-yellow-100 text-yellow-600 dark:bg-yellow-900/50 dark:text-yellow-400" : "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"}`}
-                      >
-                        {step.type === "trigger" ? (
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
+              {steps.map((step, index) => {
+                const config = step.config as UIStepConfig;
+                return (
+                  <div
+                    key={step.id}
+                    className={`p-4 rounded-lg border ${activeStepIndex === index ? "border-blue-500 dark:border-blue-400 ring-2 ring-blue-500/30" : "border-gray-200 dark:border-gray-700"} ${(() => {
+                      if (step.type === "trigger")
+                        return "bg-blue-50 dark:bg-blue-900/20";
+                      if (step.type === "condition")
+                        return "bg-yellow-50 dark:bg-yellow-900/20";
+                      return "bg-green-50 dark:bg-green-900/20";
+                    })()}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setActiveStepIndex(index)}
+                      className="w-full text-left flex justify-between items-start mb-2"
+                    >
+                      <div className="flex items-center">
+                        <div
+                          className={`p-1.5 rounded-md mr-2 ${(() => {
+                            if (step.type === "trigger")
+                              return "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400";
+                            if (step.type === "condition")
+                              return "bg-yellow-100 text-yellow-600 dark:bg-yellow-900/50 dark:text-yellow-400";
+                            return "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400";
+                          })()}`}
+                        >
+                          {(() => {
+                            if (step.type === "trigger") {
+                              return (
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                                  />
+                                </svg>
+                              );
+                            }
+                            if (step.type === "condition") {
+                              return (
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                </svg>
+                              );
+                            }
+                            return (
+                              <svg
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                            );
+                          })()}
+                        </div>
+
+                        <div>
+                          <input
+                            type="text"
+                            value={step.name}
+                            onChange={(e) =>
+                              updateStep(index, { name: e.target.value })
+                            }
+                            className="text-sm font-medium text-gray-900 dark:text-white bg-transparent border-0 border-b border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 focus:ring-0 p-0"
+                            placeholder="Step Name"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {step.type.charAt(0).toUpperCase() +
+                              step.type.slice(1)}{" "}
+                            Step
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex space-x-2">
+                        {index > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeStep(index);
+                            }}
+                            className="p-1 text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400"
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M13 10V3L4 14h7v7l9-11h-7z"
-                            />
-                          </svg>
-                        ) : step.type === "condition" ? (
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                        ) : (
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
+                            </svg>
+                          </button>
                         )}
                       </div>
+                    </button>
 
-                      <div>
-                        <input
-                          type="text"
-                          value={step.name}
-                          onChange={(e) =>
-                            updateStep(index, { name: e.target.value })
-                          }
-                          className="text-sm font-medium text-gray-900 dark:text-white bg-transparent border-0 border-b border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 focus:ring-0 p-0"
-                          placeholder="Step Name"
-                        />
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          {step.type.charAt(0).toUpperCase() +
-                            step.type.slice(1)}{" "}
-                          Step
-                        </p>
+                    <textarea
+                      value={step.description}
+                      onChange={(e) =>
+                        updateStep(index, { description: e.target.value })
+                      }
+                      className="w-full p-2 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white/50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-blue-500 focus:border-transparent mt-2"
+                      placeholder="Step description..."
+                      rows={2}
+                    />
+
+                    {/* Step Configuration */}
+                    {activeStepIndex === index && (
+                      <div className="mt-4 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+                        <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                          Step Configuration
+                        </h5>
+
+                        {step.type === "trigger" && (
+                          <div className="space-y-3"></div>
+                        )}
+
+                        {step.type === "condition" && (
+                          <ConditionEditor
+                            index={index}
+                            config={config}
+                            updateStep={updateStep}
+                            availableTasks={availableTasks}
+                            teamMembers={teamMembers}
+                          />
+                        )}
+
+                        {step.type === "action" && (
+                          <ActionEditor
+                            index={index}
+                            config={config}
+                            updateStep={updateStep}
+                            availableTasks={availableTasks}
+                            teamMembers={teamMembers}
+                          />
+                        )}
+
+                        {/* Step Connections */}
+                        <div className="mt-4">
+                          <h6 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Connect to Steps
+                          </h6>
+                          <div className="space-y-2">
+                            {steps
+                              .filter(
+                                (s) => s.id !== step.id && s.type !== "trigger"
+                              )
+                              .map((targetStep, _targetIndex) => {
+                                const actualTargetIndex = steps.findIndex(
+                                  (s) => s.id === targetStep.id
+                                );
+                                const isConnected = step.nextSteps.includes(
+                                  targetStep.id
+                                );
+
+                                return (
+                                  <div
+                                    key={targetStep.id}
+                                    className="flex items-center"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      id={`connect-${step.id}-${targetStep.id}`}
+                                      checked={isConnected}
+                                      onChange={() => {
+                                        if (isConnected) {
+                                          disconnectSteps(
+                                            index,
+                                            actualTargetIndex
+                                          );
+                                        } else {
+                                          connectSteps(
+                                            index,
+                                            actualTargetIndex
+                                          );
+                                        }
+                                      }}
+                                      className="h-3 w-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600"
+                                    />
+                                    <label
+                                      htmlFor={`connect-${step.id}-${targetStep.id}`}
+                                      className="ml-2 text-xs text-gray-700 dark:text-gray-300"
+                                    >
+                                      {targetStep.name}
+                                    </label>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex space-x-2">
-                      {index > 0 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeStep(index);
-                          }}
-                          className="p-1 text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400"
-                        >
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
-
-                  <textarea
-                    value={step.description}
-                    onChange={(e) =>
-                      updateStep(index, { description: e.target.value })
-                    }
-                    className="w-full p-2 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white/50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-blue-500 focus:border-transparent mt-2"
-                    placeholder="Step description..."
-                    rows={2}
-                  />
-
-                  {/* Step Configuration */}
-                  {activeStepIndex === index && (
-                    <div className="mt-4 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-                      <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
-                        Step Configuration
-                      </h5>
-
-                      {step.type === "trigger" && (
-                        <div className="space-y-3"></div>
-                      )}
-
-                      {step.type === "condition" && (
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                              Condition Type
-                            </label>
-                            <select
-                              value={step.config.conditionType || ""}
-                              onChange={(e) =>
-                                updateStep(index, {
-                                  config: {
-                                    ...step.config,
-                                    conditionType: e.target.value,
-                                    expectedValue: "",
-                                    taskId: "",
-                                    percentage: undefined,
-                                  },
-                                })
-                              }
-                              className="w-full p-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            >
-                              <option value="">Select a condition...</option>
-                              {Object.entries(CONDITION_TYPES).map(
-                                ([key, label]) => (
-                                  <option key={key} value={key}>
-                                    {label}
-                                  </option>
-                                )
-                              )}
-                            </select>
-                          </div>
-
-                          {/* Task-based conditions */}
-                          {step.config.conditionType?.startsWith("task.") &&
-                            step.config.conditionType !==
-                              "task.assignee.empty" && (
-                              <div className="space-y-2">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    Task
-                                  </label>
-                                  <select
-                                    value={step.config.taskId || ""}
-                                    onChange={(e) =>
-                                      updateStep(index, {
-                                        config: {
-                                          ...step.config,
-                                          taskId: e.target.value,
-                                        },
-                                      })
-                                    }
-                                    className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                  >
-                                    <option value="">
-                                      Select a task or use current task
-                                    </option>
-                                    {availableTasks.map((task) => (
-                                      <option key={task.id} value={task.id}>
-                                        {task.title}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                    Leave empty to use the current task from
-                                    workflow context
-                                  </p>
-                                </div>
-
-                                {/* Task Status */}
-                                {step.config.conditionType ===
-                                  "task.status.equals" && (
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                      Expected Status
-                                    </label>
-                                    <select
-                                      value={step.config.expectedValue || ""}
-                                      onChange={(e) =>
-                                        updateStep(index, {
-                                          config: {
-                                            ...step.config,
-                                            expectedValue: e.target.value,
-                                          },
-                                        })
-                                      }
-                                      className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    >
-                                      <option value="">Select status...</option>
-                                      {TASK_STATUSES.map((status) => (
-                                        <option key={status} value={status}>
-                                          {status.charAt(0).toUpperCase() +
-                                            status.slice(1).replace("-", " ")}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                )}
-
-                                {/* Task Priority */}
-                                {step.config.conditionType ===
-                                  "task.priority.equals" && (
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                      Expected Priority
-                                    </label>
-                                    <select
-                                      value={step.config.expectedValue || ""}
-                                      onChange={(e) =>
-                                        updateStep(index, {
-                                          config: {
-                                            ...step.config,
-                                            expectedValue: e.target.value,
-                                          },
-                                        })
-                                      }
-                                      className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    >
-                                      <option value="">
-                                        Select priority...
-                                      </option>
-                                      {TASK_PRIORITIES.map((priority) => (
-                                        <option key={priority} value={priority}>
-                                          {priority.charAt(0).toUpperCase() +
-                                            priority.slice(1)}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                )}
-
-                                {/* Task Assignee */}
-                                {step.config.conditionType ===
-                                  "task.assignee.equals" && (
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                      Expected Assignee
-                                    </label>
-                                    <select
-                                      value={step.config.expectedValue || ""}
-                                      onChange={(e) =>
-                                        updateStep(index, {
-                                          config: {
-                                            ...step.config,
-                                            expectedValue: e.target.value,
-                                          },
-                                        })
-                                      }
-                                      className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    >
-                                      <option value="">
-                                        Select team member...
-                                      </option>
-                                      {teamMembers.map((member) => (
-                                        <option
-                                          key={member.id}
-                                          value={member.id}
-                                        >
-                                          {member.name} ({member.email})
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                          {/* Task Unassigned condition */}
-                          {step.config.conditionType ===
-                            "task.assignee.empty" && (
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                Task
-                              </label>
-                              <select
-                                value={step.config.taskId || ""}
-                                onChange={(e) =>
-                                  updateStep(index, {
-                                    config: {
-                                      ...step.config,
-                                      taskId: e.target.value,
-                                    },
-                                  })
-                                }
-                                className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              >
-                                <option value="">
-                                  Select a task or use current task
-                                </option>
-                                {availableTasks.map((task) => (
-                                  <option key={task.id} value={task.id}>
-                                    {task.title}
-                                  </option>
-                                ))}
-                              </select>
-                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                Leave empty to use the current task from
-                                workflow context
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Project completion conditions */}
-                          {(step.config.conditionType ===
-                            "project.completion.above" ||
-                            step.config.conditionType ===
-                              "project.completion.below") && (
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                Completion Percentage
-                              </label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={step.config.percentage || ""}
-                                onChange={(e) =>
-                                  updateStep(index, {
-                                    config: {
-                                      ...step.config,
-                                      percentage: parseInt(e.target.value) || 0,
-                                    },
-                                  })
-                                }
-                                className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                placeholder="Enter percentage (0-100)"
-                              />
-                            </div>
-                          )}
-
-                          {/* Condition explanation */}
-                          {step.config.conditionType && (
-                            <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
-                              <p className="text-xs text-blue-700 dark:text-blue-300">
-                                <span className="font-medium">
-                                  This condition will:
-                                </span>
-                                {step.config.conditionType ===
-                                  "task.status.equals" &&
-                                  ` Check if the task status equals "${step.config.expectedValue || "selected status"}"`}
-                                {step.config.conditionType ===
-                                  "task.priority.equals" &&
-                                  ` Check if the task priority equals "${step.config.expectedValue || "selected priority"}"`}
-                                {step.config.conditionType ===
-                                  "task.assignee.equals" &&
-                                  ` Check if the task is assigned to the selected team member`}
-                                {step.config.conditionType ===
-                                  "task.assignee.empty" &&
-                                  ` Check if the task is unassigned`}
-                                {step.config.conditionType ===
-                                  "task.duedate.overdue" &&
-                                  ` Check if the task is past its due date`}
-                                {step.config.conditionType ===
-                                  "task.duedate.today" &&
-                                  ` Check if the task is due today`}
-                                {step.config.conditionType ===
-                                  "task.duedate.thisweek" &&
-                                  ` Check if the task is due within the next 7 days`}
-                                {step.config.conditionType ===
-                                  "project.completion.above" &&
-                                  ` Check if project completion is above ${step.config.percentage || 0}%`}
-                                {step.config.conditionType ===
-                                  "project.completion.below" &&
-                                  ` Check if project completion is below ${step.config.percentage || 0}%`}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {step.type === "action" && (
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                              Action Type
-                            </label>
-                            <select
-                              value={step.config.actionType || ""}
-                              onChange={(e) =>
-                                updateStep(index, {
-                                  config: {
-                                    ...step.config,
-                                    actionType: e.target.value,
-                                  },
-                                })
-                              }
-                              className="w-full p-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            >
-                              <option value="">Select an action type</option>
-                              {Object.entries(ACTION_TYPES).map(
-                                ([key, label]) => (
-                                  <option key={key} value={key}>
-                                    {label}
-                                  </option>
-                                )
-                              )}
-                            </select>
-                          </div>
-
-                          {step.config.actionType && (
-                            <div className="space-y-3">
-                              {/* Task-related actions */}
-                              {(step.config.actionType === "task.create" ||
-                                step.config.actionType === "task.update" ||
-                                step.config.actionType === "task.assign") && (
-                                <div className="space-y-2">
-                                  <h6 className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                                    Task Configuration
-                                  </h6>
-
-                                  {step.config.actionType !== "task.create" && (
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Task ID (or variable)
-                                      </label>
-                                      <select
-                                        value={
-                                          step.config.taskData?.taskId || ""
-                                        }
-                                        onChange={(e) =>
-                                          updateStep(index, {
-                                            config: {
-                                              ...step.config,
-                                              taskData: {
-                                                ...step.config.taskData,
-                                                taskId: e.target.value,
-                                              },
-                                            },
-                                          })
-                                        }
-                                        className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                      >
-                                        <option value="">Select a task</option>
-                                        {availableTasks.map((task) => (
-                                          <option key={task.id} value={task.id}>
-                                            {task.title}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  )}
-
-                                  {step.config.actionType !== "task.assign" && (
-                                    <>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                          Task Title
-                                        </label>
-                                        <input
-                                          type="text"
-                                          value={
-                                            step.config.taskData?.title || ""
-                                          }
-                                          onChange={(e) =>
-                                            updateStep(index, {
-                                              config: {
-                                                ...step.config,
-                                                taskData: {
-                                                  ...step.config.taskData,
-                                                  title: e.target.value,
-                                                },
-                                              },
-                                            })
-                                          }
-                                          className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                          placeholder="Task title"
-                                        />
-                                      </div>
-
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                          Description
-                                        </label>
-                                        <textarea
-                                          value={
-                                            step.config.taskData?.description ||
-                                            ""
-                                          }
-                                          onChange={(e) =>
-                                            updateStep(index, {
-                                              config: {
-                                                ...step.config,
-                                                taskData: {
-                                                  ...step.config.taskData,
-                                                  description: e.target.value,
-                                                },
-                                              },
-                                            })
-                                          }
-                                          className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                          placeholder="Task description"
-                                          rows={2}
-                                        />
-                                      </div>
-                                    </>
-                                  )}
-
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                      Assignee
-                                    </label>
-                                    <select
-                                      value={
-                                        step.config.taskData?.assignee || ""
-                                      }
-                                      onChange={(e) =>
-                                        updateStep(index, {
-                                          config: {
-                                            ...step.config,
-                                            taskData: {
-                                              ...step.config.taskData,
-                                              assignee: e.target.value,
-                                            },
-                                          },
-                                        })
-                                      }
-                                      className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    >
-                                      <option value="">Unassigned</option>
-                                      {teamMembers.map((member) => (
-                                        <option
-                                          key={member.id}
-                                          value={member.email}
-                                        >
-                                          {member.name} ({member.email})
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
-                                  {step.config.actionType !== "task.assign" && (
-                                    <>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                          Due Date
-                                        </label>
-                                        <input
-                                          type="date"
-                                          value={
-                                            step.config.taskData?.dueDate || ""
-                                          }
-                                          onChange={(e) =>
-                                            updateStep(index, {
-                                              config: {
-                                                ...step.config,
-                                                taskData: {
-                                                  ...step.config.taskData,
-                                                  dueDate: e.target.value,
-                                                },
-                                              },
-                                            })
-                                          }
-                                          className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        />
-                                      </div>
-
-                                      <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                            Priority
-                                          </label>
-                                          <select
-                                            value={
-                                              step.config.taskData?.priority ||
-                                              "medium"
-                                            }
-                                            onChange={(e) =>
-                                              updateStep(index, {
-                                                config: {
-                                                  ...step.config,
-                                                  taskData: {
-                                                    ...step.config.taskData,
-                                                    priority: e.target.value,
-                                                  },
-                                                },
-                                              })
-                                            }
-                                            className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                          >
-                                            <option value="low">Low</option>
-                                            <option value="medium">
-                                              Medium
-                                            </option>
-                                            <option value="high">High</option>
-                                          </select>
-                                        </div>
-
-                                        {step.config.actionType ===
-                                          "task.update" && (
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                              Status
-                                            </label>
-                                            <select
-                                              value={
-                                                step.config.taskData?.status ||
-                                                ""
-                                              }
-                                              onChange={(e) =>
-                                                updateStep(index, {
-                                                  config: {
-                                                    ...step.config,
-                                                    taskData: {
-                                                      ...step.config.taskData,
-                                                      status: e.target.value,
-                                                    },
-                                                  },
-                                                })
-                                              }
-                                              className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                            >
-                                              <option value="">
-                                                Keep current
-                                              </option>
-                                              <option value="pending">
-                                                Pending
-                                              </option>
-                                              <option value="in-progress">
-                                                In Progress
-                                              </option>
-                                              <option value="completed">
-                                                Completed
-                                              </option>
-                                            </select>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Step Connections */}
-                      <div className="mt-4">
-                        <h6 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Connect to Steps
-                        </h6>
-                        <div className="space-y-2">
-                          {steps
-                            .filter(
-                              (s) => s.id !== step.id && s.type !== "trigger"
-                            )
-                            .map((targetStep, targetIndex) => {
-                              const actualTargetIndex = steps.findIndex(
-                                (s) => s.id === targetStep.id
-                              );
-                              const isConnected = step.nextSteps.includes(
-                                targetStep.id
-                              );
-
-                              return (
-                                <div
-                                  key={targetStep.id}
-                                  className="flex items-center"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    id={`connect-${step.id}-${targetStep.id}`}
-                                    checked={isConnected}
-                                    onChange={() => {
-                                      if (isConnected) {
-                                        disconnectSteps(
-                                          index,
-                                          actualTargetIndex
-                                        );
-                                      } else {
-                                        connectSteps(index, actualTargetIndex);
-                                      }
-                                    }}
-                                    className="h-3 w-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600"
-                                  />
-                                  <label
-                                    htmlFor={`connect-${step.id}-${targetStep.id}`}
-                                    className="ml-2 text-xs text-gray-700 dark:text-gray-300"
-                                  >
-                                    {targetStep.name}
-                                  </label>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1473,3 +1016,563 @@ export default function WorkflowAutomation({
     </div>
   );
 }
+
+const ConditionEditor = ({
+  index,
+  config,
+  updateStep,
+  availableTasks,
+  teamMembers,
+}: any) => {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label
+          htmlFor="condition-type-a7zj7"
+          className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+        >
+          Condition Type
+        </label>
+
+        <select
+          id="condition-type-a7zj7"
+          value={config.conditionType || ""}
+          onChange={(e) =>
+            updateStep(index, {
+              config: {
+                ...config,
+                conditionType: e.target
+                  .value as ConditionConfig["conditionType"],
+                expectedValue: "",
+                taskId: "",
+                percentage: undefined,
+              } as StepConfig,
+            })
+          }
+          className="w-full p-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="">Select a condition...</option>
+          {Object.entries(CONDITION_TYPES).map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Task-based conditions */}
+      {config.conditionType?.startsWith("task.") &&
+        config.conditionType !== "task.assignee.empty" && (
+          <div className="space-y-2">
+            <div>
+              <label
+                htmlFor="task-7from"
+                className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
+                Task
+              </label>
+
+              <select
+                id="task-7from"
+                value={config.taskId || ""}
+                onChange={(e) =>
+                  updateStep(index, {
+                    config: {
+                      ...config,
+                      taskId: e.target.value,
+                    },
+                  })
+                }
+                className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select a task or use current task</option>
+                {availableTasks.map((task: any) => (
+                  <option key={task.id} value={task.id}>
+                    {task.title}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Leave empty to use the current task from workflow context
+              </p>
+            </div>
+
+            {/* Task Status */}
+            {config.conditionType === "task.status.equals" && (
+              <div>
+                <label
+                  htmlFor="expected-status-m2ayt"
+                  className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Expected Status
+                </label>
+
+                <select
+                  id="expected-status-m2ayt"
+                  value={config.expectedValue || ""}
+                  onChange={(e) =>
+                    updateStep(index, {
+                      config: {
+                        ...config,
+                        expectedValue: e.target.value,
+                      },
+                    })
+                  }
+                  className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select status...</option>
+                  {TASK_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status.charAt(0).toUpperCase() +
+                        status.slice(1).replace("-", " ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Task Priority */}
+            {config.conditionType === "task.priority.equals" && (
+              <div>
+                <label
+                  htmlFor="expected-priority-4j6cf"
+                  className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Expected Priority
+                </label>
+
+                <select
+                  id="expected-priority-4j6cf"
+                  value={config.expectedValue || ""}
+                  onChange={(e) =>
+                    updateStep(index, {
+                      config: {
+                        ...config,
+                        expectedValue: e.target.value,
+                      },
+                    })
+                  }
+                  className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select priority...</option>
+                  {TASK_PRIORITIES.map((priority) => (
+                    <option key={priority} value={priority}>
+                      {priority.charAt(0).toUpperCase() + priority.slice(1)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Task Assignee */}
+            {config.conditionType === "task.assignee.equals" && (
+              <div>
+                <label
+                  htmlFor="expected-assignee-oi9am"
+                  className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Expected Assignee
+                </label>
+
+                <select
+                  id="expected-assignee-oi9am"
+                  value={config.expectedValue || ""}
+                  onChange={(e) =>
+                    updateStep(index, {
+                      config: {
+                        ...config,
+                        expectedValue: e.target.value,
+                      },
+                    })
+                  }
+                  className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select team member...</option>
+                  {teamMembers.map((member: any) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} ({member.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
+      {/* Task Unassigned condition */}
+      {config.conditionType === "task.assignee.empty" && (
+        <div>
+          <label
+            htmlFor="task-m96uq"
+            className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+          >
+            Task
+          </label>
+
+          <select
+            id="task-m96uq"
+            value={config.taskId || ""}
+            onChange={(e) =>
+              updateStep(index, {
+                config: {
+                  ...config,
+                  taskId: e.target.value,
+                },
+              })
+            }
+            className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="">Select a task or use current task</option>
+            {availableTasks.map((task: any) => (
+              <option key={task.id} value={task.id}>
+                {task.title}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Leave empty to use the current task from workflow context
+          </p>
+        </div>
+      )}
+
+      {/* Project completion conditions */}
+      {(config.conditionType === "project.completion.above" ||
+        config.conditionType === "project.completion.below") && (
+        <div>
+          <label
+            htmlFor="completion-percentage-0yr68"
+            className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+          >
+            Completion Percentage
+          </label>
+
+          <input
+            id="completion-percentage-0yr68"
+            type="number"
+            min="0"
+            max="100"
+            value={config.percentage || ""}
+            onChange={(e) =>
+              updateStep(index, {
+                config: {
+                  ...config,
+                  percentage: Number.parseInt(e.target.value) || 0,
+                },
+              })
+            }
+            className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Enter percentage (0-100)"
+          />
+        </div>
+      )}
+
+      {/* Condition explanation */}
+      {config.conditionType && (
+        <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
+          <p className="text-xs text-blue-700 dark:text-blue-300">
+            <span className="font-medium">This condition will:</span>
+            {config.conditionType === "task.status.equals" &&
+              ` Check if the task status equals "${config.expectedValue || "selected status"}"`}
+            {config.conditionType === "task.priority.equals" &&
+              ` Check if the task priority equals "${config.expectedValue || "selected priority"}"`}
+            {config.conditionType === "task.assignee.equals" &&
+              ` Check if the task is assigned to the selected team member`}
+            {config.conditionType === "task.assignee.empty" &&
+              ` Check if the task is unassigned`}
+            {config.conditionType === "task.duedate.overdue" &&
+              ` Check if the task is past its due date`}
+            {config.conditionType === "task.duedate.today" &&
+              ` Check if the task is due today`}
+            {config.conditionType === "task.duedate.thisweek" &&
+              ` Check if the task is due within the next 7 days`}
+            {config.conditionType === "project.completion.above" &&
+              ` Check if project completion is above ${config.percentage || 0}%`}
+            {config.conditionType === "project.completion.below" &&
+              ` Check if project completion is below ${config.percentage || 0}%`}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ActionEditor = ({
+  index,
+  config,
+  updateStep,
+  availableTasks,
+  teamMembers,
+}: any) => {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label
+          htmlFor="action-type-fd4s4"
+          className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+        >
+          Action Type
+        </label>
+
+        <select
+          id="action-type-fd4s4"
+          value={config.actionType || ""}
+          onChange={(e) =>
+            updateStep(index, {
+              config: {
+                ...config,
+                actionType: e.target.value as ActionConfig["actionType"],
+              } as StepConfig,
+            })
+          }
+          className="w-full p-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="">Select an action type</option>
+          {Object.entries(ACTION_TYPES).map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {config.actionType && (
+        <div className="space-y-3">
+          {/* Task-related actions */}
+          {(config.actionType === "task.create" ||
+            config.actionType === "task.update" ||
+            config.actionType === "task.assign") && (
+            <div className="space-y-2">
+              <h6 className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                Task Configuration
+              </h6>
+
+              {config.actionType !== "task.create" && (
+                <div>
+                  <label
+                    htmlFor="task-id-or-variable-zkvo0"
+                    className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
+                    Task ID (or variable)
+                  </label>
+
+                  <select
+                    id="task-id-or-variable-zkvo0"
+                    value={config.taskData?.taskId || ""}
+                    onChange={(e) =>
+                      updateStep(index, {
+                        config: {
+                          ...config,
+                          taskData: {
+                            ...config.taskData,
+                            taskId: e.target.value,
+                          },
+                        },
+                      })
+                    }
+                    className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Select a task</option>
+                    {availableTasks.map((task: any) => (
+                      <option key={task.id} value={task.id}>
+                        {task.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {config.actionType !== "task.assign" && (
+                <>
+                  <div>
+                    <label
+                      htmlFor="task-title-rgjgn"
+                      className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    >
+                      Task Title
+                    </label>
+
+                    <input
+                      id="task-title-rgjgn"
+                      type="text"
+                      value={config.taskData?.title || ""}
+                      onChange={(e) =>
+                        updateStep(index, {
+                          config: {
+                            ...config,
+                            taskData: {
+                              ...config.taskData,
+                              title: e.target.value,
+                            },
+                          },
+                        })
+                      }
+                      className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Task title"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="description-7hty8"
+                      className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    >
+                      Description
+                    </label>
+
+                    <textarea
+                      id="description-7hty8"
+                      value={config.taskData?.description || ""}
+                      onChange={(e) =>
+                        updateStep(index, {
+                          config: {
+                            ...config,
+                            taskData: {
+                              ...config.taskData,
+                              description: e.target.value,
+                            },
+                          },
+                        })
+                      }
+                      className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Task description"
+                      rows={2}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label
+                  htmlFor="assignee-36xmd"
+                  className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Assignee
+                </label>
+
+                <select
+                  id="assignee-36xmd"
+                  value={config.taskData?.assignee || ""}
+                  onChange={(e) =>
+                    updateStep(index, {
+                      config: {
+                        ...config,
+                        taskData: {
+                          ...config.taskData,
+                          assignee: e.target.value,
+                        },
+                      },
+                    })
+                  }
+                  className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Unassigned</option>
+                  {teamMembers.map((member: any) => (
+                    <option key={member.id} value={member.email}>
+                      {member.name} ({member.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {config.actionType !== "task.assign" && (
+                <>
+                  <div>
+                    <label
+                      htmlFor="due-date-li9pp"
+                      className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    >
+                      Due Date
+                    </label>
+
+                    <input
+                      id="due-date-li9pp"
+                      type="date"
+                      value={config.taskData?.dueDate || ""}
+                      onChange={(e) =>
+                        updateStep(index, {
+                          config: {
+                            ...config,
+                            taskData: {
+                              ...config.taskData,
+                              dueDate: e.target.value,
+                            },
+                          },
+                        })
+                      }
+                      className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label
+                        htmlFor="priority-y30h9"
+                        className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                      >
+                        Priority
+                      </label>
+
+                      <select
+                        id="priority-y30h9"
+                        value={config.taskData?.priority || "medium"}
+                        onChange={(e) =>
+                          updateStep(index, {
+                            config: {
+                              ...config,
+                              taskData: {
+                                ...config.taskData,
+                                priority: e.target.value,
+                              },
+                            },
+                          })
+                        }
+                        className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                      </select>
+                    </div>
+
+                    {config.actionType === "task.update" && (
+                      <div>
+                        <label
+                          htmlFor="status-fqqyu"
+                          className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                        >
+                          Status
+                        </label>
+
+                        <select
+                          id="status-fqqyu"
+                          value={config.taskData?.status || ""}
+                          onChange={(e) =>
+                            updateStep(index, {
+                              config: {
+                                ...config,
+                                taskData: {
+                                  ...config.taskData,
+                                  status: e.target.value,
+                                },
+                              },
+                            })
+                          }
+                          className="w-full p-2 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value="">Keep current</option>
+                          <option value="pending">Pending</option>
+                          <option value="in-progress">In Progress</option>
+                          <option value="completed">Completed</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};

@@ -15,9 +15,9 @@ export interface Organization {
   logoUrl?: string;
   website?: string;
   email?: string;
-  createdAt: any;
+  createdAt: unknown;
   createdBy: string;
-  updatedAt: any;
+  updatedAt: unknown;
   plan: SubscriptionPlan;
   memberCount?: number;
   allowPublicProjects?: boolean;
@@ -50,7 +50,7 @@ export interface OrganizationMembership {
   organizationId: string;
   userId: string;
   role: OrganizationRole;
-  joinedAt: any;
+  joinedAt: unknown;
   invitedBy?: string;
   status: "active" | "invited" | "suspended";
   userProfile?: UserProfile;
@@ -66,7 +66,7 @@ export interface Project {
   startDate?: string;
   dueDate: string;
   createdBy: string;
-  createdAt: any;
+  createdAt: unknown;
   members?: string[];
   client?: string;
   budget?: string;

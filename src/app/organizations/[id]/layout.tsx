@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter, usePathname } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/firebase/useAuth";
 import {
@@ -27,15 +27,15 @@ import Badge from "@/components/Badge";
 
 export default function OrganizationLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   // Extract organization ID from URL parameters
   const { id } = useParams();
 
   // State management for organization data and UI
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [activeTab, setActiveTab] = useState("projects"); // Currently unused but reserved for future tabs
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasPermission, setHasPermission] = useState(false);
@@ -47,7 +47,7 @@ export default function OrganizationLayout({
 
   // Project-specific state for breadcrumb navigation
   const [projectName, setProjectName] = useState<string>("");
-  const router = useRouter();
+
   const pathname = usePathname();
 
   // Handle both string and array ID formats from Next.js params
@@ -209,7 +209,7 @@ export default function OrganizationLayout({
     if (!file || !organizationId) return;
 
     try {
-      const result = await uploadOrganizationLogo(file, organizationId, {
+      await uploadOrganizationLogo(file, organizationId, {
         onSuccess: (result) => {
           // Update local organization state with new logo URL
           if (organization) {
@@ -219,7 +219,7 @@ export default function OrganizationLayout({
             });
           }
           // Dispatch event to update organization logo across the app
-          window.dispatchEvent(
+          globalThis.dispatchEvent(
             new CustomEvent("organizationLogoUpdated", {
               detail: { organizationId, logoUrl: result.url },
             })
@@ -297,8 +297,9 @@ export default function OrganizationLayout({
 
                 {/* Upload overlay for users with access */}
                 {hasPermission && (
-                  <div
-                    className="absolute inset-0 bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center cursor-pointer"
+                  <button
+                    type="button"
+                    className="absolute inset-0 bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center cursor-pointer border-none"
                     onClick={() => setShowImageUpload(true)}
                   >
                     <svg
@@ -320,7 +321,7 @@ export default function OrganizationLayout({
                         d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
                       />
                     </svg>
-                  </div>
+                  </button>
                 )}
               </div>
             </div>

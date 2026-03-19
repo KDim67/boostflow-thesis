@@ -24,6 +24,27 @@ import { usePlatformAuth } from "@/lib/firebase/usePlatformAuth";
  *
  * Access is restricted to users with platform admin privileges.
  */
+const sendSystemAnnouncement = async (title: string, message: string) => {
+  const response = await fetch("/api/admin/users");
+  if (!response.ok) {
+    throw new Error("Failed to fetch users");
+  }
+
+  const { users } = await response.json();
+
+  const notificationPromises = users.map((user: { uid: string }) =>
+    NotificationService.createNotification(
+      user.uid,
+      title,
+      message,
+      "system_announcement"
+    )
+  );
+
+  await Promise.all(notificationPromises);
+  return users.length;
+};
+
 export default function PlatformAdminDashboard() {
   // Platform metrics state
   const [metrics, setMetrics] = useState({
@@ -46,51 +67,13 @@ export default function PlatformAdminDashboard() {
   // UI state management
   const [isLoading, setIsLoading] = useState(true); // Controls loading indicators
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false); // Modal visibility
-  const [announcementTitle, setAnnouncementTitle] = useState(""); // System announcement title
-  const [announcementMessage, setAnnouncementMessage] = useState(""); // System announcement content
-  const [isSendingAnnouncement, setIsSendingAnnouncement] = useState(false); // Prevents double-sending
 
   // Authentication and authorization hooks
   const { user, isPlatformAdmin, isSuperAdmin } = usePlatformAuth();
 
-  // Initial data loading effect
-  useEffect(() => {
-    /**
-     * Fetches platform metrics and resource utilization data concurrently
-     * Uses Promise.all for optimal performance by running requests in parallel
-     */
-    const fetchDashboardData = async () => {
-      try {
-        setIsLoading(true);
-        // Parallel API calls to reduce loading time
-        const [metricsData, resourceData] = await Promise.all([
-          getPlatformMetrics(),
-          getResourceUtilization(),
-        ]);
-
-        setMetrics(metricsData);
-        setResourceUsage(resourceData);
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    // Only fetch data if user is authenticated and has admin privileges
-    if (user && isPlatformAdmin) {
-      fetchDashboardData();
-    }
-  }, [user, isPlatformAdmin]);
-
-  /**
-   * Manually refreshes dashboard data
-   * Triggered by the refresh button
-   */
-  const handleRefreshData = async () => {
+  const loadData = async () => {
     try {
       setIsLoading(true);
-      // Same parallel fetching pattern as initial load
       const [metricsData, resourceData] = await Promise.all([
         getPlatformMetrics(),
         getResourceUtilization(),
@@ -99,67 +82,24 @@ export default function PlatformAdminDashboard() {
       setMetrics(metricsData);
       setResourceUsage(resourceData);
     } catch (error) {
-      console.error("Error refreshing dashboard data:", error);
+      console.error("Error fetching dashboard data:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Initial data loading effect
+  useEffect(() => {
+    if (user && isPlatformAdmin) {
+      loadData();
+    }
+  }, [user, isPlatformAdmin]);
+
   /**
-   * Handles sending system-wide announcements to all platform users
-   * Only available to super administrators
-   *
-   * Process:
-   * 1. Validates input fields
-   * 2. Fetches all users from the platform
-   * 3. Creates notifications for each user concurrently
-   * 4. Resets form and closes modal on success
+   * Manually refreshes dashboard data
+   * Triggered by the refresh button
    */
-  const handleSendAnnouncement = async () => {
-    // Input valdation
-    if (!announcementTitle.trim() || !announcementMessage.trim()) {
-      alert("Please fill in both title and message");
-      return;
-    }
-
-    try {
-      setIsSendingAnnouncement(true);
-
-      // Fetch all platform users
-      const response = await fetch("/api/admin/users");
-      if (!response.ok) {
-        throw new Error("Failed to fetch users");
-      }
-
-      const { users } = await response.json();
-
-      // Create notification promises for all users
-      const notificationPromises = users.map((user: any) =>
-        NotificationService.createNotification(
-          user.uid,
-          announcementTitle,
-          announcementMessage,
-          "system_announcement", // Special notification type for system messages
-          undefined
-        )
-      );
-
-      // Send all notifications concurrently
-      await Promise.all(notificationPromises);
-
-      // Reset form state and close modal
-      setAnnouncementTitle("");
-      setAnnouncementMessage("");
-      setShowAnnouncementModal(false);
-      alert(`System announcement sent to ${users.length} users successfully!`);
-    } catch (error) {
-      console.error("Error sending system announcement:", error);
-      alert("Failed to send system announcement. Please try again.");
-    } finally {
-      setIsSendingAnnouncement(false);
-    }
-  };
-
+  const handleRefreshData = () => loadData();
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center mb-6">
@@ -566,78 +506,115 @@ export default function PlatformAdminDashboard() {
       </div>
 
       {/* System Announcement Modal */}
-      {showAnnouncementModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                Send System Announcement
-              </h3>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendAnnouncement();
-              }}
-              className="p-6 space-y-4"
-            >
-              <div>
-                <label
-                  htmlFor="announcement-title"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Title
-                </label>
-                <input
-                  type="text"
-                  id="announcement-title"
-                  value={announcementTitle}
-                  onChange={(e) => setAnnouncementTitle(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                  placeholder="Enter announcement title"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="announcement-message"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-                >
-                  Message
-                </label>
-                <textarea
-                  id="announcement-message"
-                  value={announcementMessage}
-                  onChange={(e) => setAnnouncementMessage(e.target.value)}
-                  required
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                  placeholder="Enter announcement message"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowAnnouncementModal(false)}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSendingAnnouncement}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSendingAnnouncement ? "Sending..." : "Send Announcement"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AnnouncementModal
+        isOpen={showAnnouncementModal}
+        onClose={() => setShowAnnouncementModal(false)}
+        onSend={sendSystemAnnouncement}
+      />
     </div>
   );
 }
+
+const AnnouncementModal = ({
+  isOpen,
+  onClose,
+  onSend,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSend: (title: string, message: string) => Promise<number>;
+}) => {
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !message.trim()) {
+      alert("Please fill in both title and message");
+      return;
+    }
+    try {
+      setIsSending(true);
+      const count = await onSend(title, message);
+      setTitle("");
+      setMessage("");
+      onClose();
+      alert(`System announcement sent to ${count} users successfully!`);
+    } catch (error) {
+      console.error("Error sending system announcement:", error);
+      alert("Failed to send system announcement. Please try again.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+            Send System Announcement
+          </h3>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label
+              htmlFor="announcement-title"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
+              Title
+            </label>
+            <input
+              type="text"
+              id="announcement-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              placeholder="Enter announcement title"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="announcement-message"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
+              Message
+            </label>
+            <textarea
+              id="announcement-message"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              required
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              placeholder="Enter announcement message"
+            />
+          </div>
+
+          <div className="flex justify-end space-x-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSending}
+              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSending ? "Sending..." : "Send Announcement"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};

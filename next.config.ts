@@ -26,7 +26,26 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
-  serverExternalPackages: ["firebase-admin", "minio"],
+  serverExternalPackages: [
+    "firebase-admin",
+    "minio",
+    "nodemailer",
+    "@sendgrid/mail",
+    "@sendgrid/helpers",
+  ],
+  turbopack: {
+    resolveAlias: {
+      nodemailer: {
+        browser: "./src/lib/stubs/nodemailer.stub",
+      },
+      "@sendgrid/mail": {
+        browser: "./src/lib/stubs/nodemailer.stub",
+      },
+      "@sendgrid/helpers": {
+        browser: "./src/lib/stubs/nodemailer.stub",
+      },
+    },
+  },
   output: "standalone",
   experimental: {},
   transpilePackages: [

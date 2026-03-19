@@ -14,7 +14,9 @@ interface LayoutWrapperProps {
  * based on the current route. Handles different layout requirements for
  * admin panels, auth pages, and regular application pages.
  */
-export default function LayoutWrapper({ children }: LayoutWrapperProps) {
+export default function LayoutWrapper({
+  children,
+}: Readonly<LayoutWrapperProps>) {
   const pathname = usePathname();
 
   // Route detection for conditional layout rendering

@@ -34,13 +34,12 @@ function VerifyEmailContent() {
           setTimeout(() => {
             router.push("/organizations");
           }, 2000);
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error("Error verifying email:", error);
           setMessage("Invalid or expired verification link. Please try again.");
         } finally {
           setIsVerifying(false);
         }
-        return;
       }
     };
 
@@ -61,8 +60,12 @@ function VerifyEmailContent() {
     try {
       await sendEmailVerification(user);
       setMessage("Verification email sent! Please check your inbox.");
-    } catch (error: any) {
-      setMessage(error.message || "Failed to send verification email");
+    } catch (error: unknown) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to send verification email"
+      );
     } finally {
       setIsResending(false);
     }
@@ -88,7 +91,8 @@ function VerifyEmailContent() {
           "Email not yet verified. Please check your inbox and click the verification link."
         );
       }
-    } catch (error: any) {
+    } catch (error) {
+      console.error("Error checking verification status:", error);
       setMessage("Error checking verification status. Please try again.");
     } finally {
       setIsChecking(false);

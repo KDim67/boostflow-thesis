@@ -72,13 +72,18 @@ Provide only the JSON object, no additional text.`;
 
     // Generate AI response and extract text content
     const result = await model.generateContent(generationPrompt);
-    const response = await result.response;
+    const response = result.response;
     const text = response.text();
 
     let projectSuggestion: ProjectSuggestion;
     try {
-      // Extract JSON from AI response using regex (AI may include extra text)
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      // Extract JSON from AI response
+      const startIndex = text.indexOf("{");
+      const endIndex = text.lastIndexOf("}");
+      const jsonMatch =
+        startIndex !== -1 && endIndex > startIndex
+          ? [text.substring(startIndex, endIndex + 1)]
+          : null;
       if (!jsonMatch) {
         throw new Error("No JSON object found in response");
       }

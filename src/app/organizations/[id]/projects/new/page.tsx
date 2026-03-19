@@ -407,7 +407,13 @@ export default function NewProjectPage() {
                   Be as detailed as possible for better AI suggestions
                 </p>
                 <span
-                  className={`text-xs ${aiPrompt.length > 400 ? "text-red-600 dark:text-red-400" : aiPrompt.length > 50 ? "text-green-600 dark:text-green-400" : "text-gray-400"}`}
+                  className={`text-xs ${(() => {
+                    if (aiPrompt.length > 400)
+                      return "text-red-600 dark:text-red-400";
+                    if (aiPrompt.length > 50)
+                      return "text-green-600 dark:text-green-400";
+                    return "text-gray-400";
+                  })()}`}
                 >
                   {aiPrompt.length}/500 characters
                 </span>

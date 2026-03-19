@@ -5,14 +5,10 @@ import {
   generateFileName,
   initializeBuckets,
 } from "@/lib/minio/client";
-import { getAuth } from "firebase-admin/auth";
-import { adminApp } from "@/lib/firebase/admin";
 import { addDocument } from "@/lib/firebase/firestoreService";
 import { hasOrganizationPermission } from "@/lib/firebase/organizationService";
+import { requireBearerToken } from "@/lib/api/authHelper";
 
-const auth = getAuth(adminApp);
-
-// Configure API route to handle larger file uploads
 export const config = {
   api: {
     bodyParser: {
@@ -23,18 +19,11 @@ export const config = {
 
 export async function POST(request: NextRequest) {
   try {
-    // Initialize buckets if they don't exist
     await initializeBuckets();
 
-    // Get the authorization header
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = authHeader.split("Bearer ")[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const userId = decodedToken.uid;
+    const authResult = await requireBearerToken(request);
+    if (authResult instanceof NextResponse) return authResult;
+    const { uid: userId } = authResult;
 
     // Parse the form data
     const formData = await request.formData();
@@ -70,16 +59,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file size (5MB limit for documents)
-    const maxSize = 5 * 1024 * 1024;
-    if (file.size > maxSize) {
+    if (file.size > 5 * 1024 * 1024) {
       return NextResponse.json(
         { error: "File too large. Maximum size is 5MB." },
         { status: 400 }
       );
     }
 
-    // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -96,35 +82,60 @@ export async function POST(request: NextRequest) {
 
     // Get file extension and type
     const extension = file.name.split(".").pop()?.toLowerCase() || "";
-    const getFileType = (ext: string) => {
-      const types: { [key: string]: string } = {
-        pdf: "PDF",
-        doc: "Word",
-        docx: "Word",
-        xls: "Excel",
-        xlsx: "Excel",
-        ppt: "PowerPoint",
-        pptx: "PowerPoint",
-        txt: "Text",
-        jpg: "Image",
-        jpeg: "Image",
-        png: "Image",
-        gif: "Image",
-        svg: "Image",
-        zip: "Archive",
-        rar: "Archive",
-        "7z": "Archive",
-      };
-      return types[ext] || "Document";
+    const getFileType = (ext: string): string => {
+      switch (ext) {
+        case "pdf":
+          return "PDF";
+        case "doc":
+        case "docx":
+          return "Word";
+        case "xls":
+        case "xlsx":
+          return "Excel";
+        case "ppt":
+        case "pptx":
+          return "PowerPoint";
+        case "txt":
+          return "Text";
+        case "jpg":
+        case "jpeg":
+        case "png":
+        case "gif":
+        case "svg":
+          return "Image";
+        case "zip":
+        case "rar":
+        case "7z":
+          return "Archive";
+        default:
+          return "Document";
+      }
     };
 
     // Format file size
     const formatFileSize = (bytes: number): string => {
       if (bytes === 0) return "0 Bytes";
       const k = 1024;
-      const sizes = ["Bytes", "KB", "MB", "GB"];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+      const getSizeUnit = (idx: number): string => {
+        switch (idx) {
+          case 0:
+            return "Bytes";
+          case 1:
+            return "KB";
+          case 2:
+            return "MB";
+          case 3:
+            return "GB";
+          default:
+            return "GB";
+        }
+      };
+      return (
+        Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) +
+        " " +
+        getSizeUnit(i)
+      );
     };
 
     // Save document metadata to Firestore

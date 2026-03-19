@@ -4,8 +4,6 @@ import {
   multiFactor,
   PhoneAuthProvider,
   PhoneMultiFactorGenerator,
-  MultiFactorSession,
-  ApplicationVerifier,
   RecaptchaVerifier,
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -127,6 +125,7 @@ export function usePlatformAuth(): UsePlatformAuthReturn {
    */
   const verifyMFA = async (verificationCode: string): Promise<void> => {
     if (!mfaVerificationId) throw new Error("MFA verification not initiated");
+    if (!user) throw new Error("User must be logged in to verify MFA");
 
     try {
       // Create phone credential from verification code
@@ -138,13 +137,11 @@ export function usePlatformAuth(): UsePlatformAuthReturn {
         PhoneMultiFactorGenerator.assertion(credential);
 
       // Enroll the phone number as a second factor
-      await multiFactor(user!).enroll(multiFactorAssertion, "Phone Number");
+      await multiFactor(user).enroll(multiFactorAssertion, "Phone Number");
 
       // Update local user state to reflect MFA enablement
-      if (user) {
-        user.isMultiFactorEnabled = true;
-        setUser({ ...user });
-      }
+      user.isMultiFactorEnabled = true;
+      setUser({ ...user });
 
       // Clear verification ID after successful enrollment
       setMfaVerificationId(null);

@@ -138,7 +138,7 @@ export const refreshGoogleToken = async (
     },
     body: new URLSearchParams({
       client_id: config.clientId,
-      client_secret: config.clientSecret!, // Non-null assertion - required for refresh
+      client_secret: config.clientSecret || "", // required for refresh
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
@@ -199,15 +199,8 @@ export const validateToken = async (
   }
 };
 
-/**
- * Generates random state for CSRF protection
- * Combines two random base36 strings for ~22 character result
- */
 function generateRandomState(): string {
-  return (
-    Math.random().toString(36).substring(2, 15) +
-    Math.random().toString(36).substring(2, 15)
-  );
+  return crypto.randomUUID().replaceAll("-", "");
 }
 
 /**

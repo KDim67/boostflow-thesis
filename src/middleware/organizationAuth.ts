@@ -12,7 +12,6 @@ import { getUserProfile } from "@/lib/firebase/userProfileService";
 async function checkUserSuspension(userId: string): Promise<boolean> {
   try {
     const userProfile = await getUserProfile(userId);
-    // Use optional chaining to safely check suspension status
     return userProfile?.suspended === true;
   } catch (error) {
     console.error("Error checking user suspension:", error);
@@ -33,7 +32,7 @@ export async function checkOrganizationPermission(
   organizationId: string,
   requiredRole: OrganizationRole = "viewer"
 ): Promise<NextResponse | null> {
-  // Extract user ID from custom header (set by authentication middleware)
+  // Extract user ID from custom header
   const userId = req.headers.get("x-user-id");
 
   // Redirect unauthenticated users to login

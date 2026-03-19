@@ -64,8 +64,11 @@ export const getAllOrganizations = async (): Promise<Organization[]> => {
           org.planFeatures || getSubscriptionPlanFeatures(org.plan);
 
         // Generate mock storage usage (80% of max storage for demo purposes)
+        const randomBytes = new Uint32Array(1);
+        crypto.getRandomValues(randomBytes);
+        const randomFraction = randomBytes[0] / (0xffffffff + 1);
         const storageUsed = Math.floor(
-          Math.random() * planFeatures.maxStorage * 0.8
+          randomFraction * planFeatures.maxStorage * 0.8
         );
 
         return {
@@ -197,7 +200,7 @@ export const deleteOrganization = async (
 ): Promise<void> => {
   try {
     // Get organization data to check for logo before deletion
-    const organization = await getOrganization(organizationId);
+    await getOrganization(organizationId);
 
     // Delete organization document
     await deleteDocument(ORGANIZATIONS_COLLECTION, organizationId);
@@ -332,16 +335,23 @@ export const hasOrganizationPermission = async (
 
     const userRole = memberships[0].role;
 
-    // Define role hierarchy with numeric values for comparison
-    const roleHierarchy: Record<OrganizationRole, number> = {
-      owner: 4,
-      admin: 3,
-      member: 2,
-      viewer: 1,
+    // Define role hierarchy helper to get numeric values
+    const getRoleLevel = (role: OrganizationRole): number => {
+      switch (role) {
+        case "owner":
+          return 4;
+        case "admin":
+          return 3;
+        case "member":
+          return 2;
+        case "viewer":
+        default:
+          return 1;
+      }
     };
 
     // Check if user's role level meets or exceeds required role level
-    return roleHierarchy[userRole] >= roleHierarchy[requiredRole];
+    return getRoleLevel(userRole) >= getRoleLevel(requiredRole);
   } catch (error) {
     logger.error("Error checking organization permission", error as Error, {
       userId,
@@ -430,6 +440,28 @@ export const updateOrganizationMembership = async (
 };
 
 /**
+ * Validates role-based permissions for removing a member
+ */
+export const checkMemberRemovalPermissions = (
+  currentUserRole: OrganizationRole,
+  targetMemberRole: OrganizationRole
+): void => {
+  if (currentUserRole === "owner") {
+    // Owners can remove anyone except other owners (already validated)
+    return;
+  }
+
+  if (currentUserRole === "admin") {
+    if (targetMemberRole === "admin") {
+      throw new Error("Admins cannot remove other admins.");
+    }
+    return;
+  }
+
+  throw new Error("You do not have permission to remove members.");
+};
+
+/**
  * Removes a member from an organization by deleting their membership
  * Used for both removing active members and declining invitations
  * Includes permission validation to ensure only authorized users can remove members
@@ -488,26 +520,10 @@ export const removeOrganizationMember = async (
       const currentUserRole = currentUserMemberships[0].role;
       const targetMemberRole = membershipToRemove.role;
 
-      // Define role hierarchy for permission checking
-      const roleHierarchy: Record<OrganizationRole, number> = {
-        owner: 4,
-        admin: 3,
-        member: 2,
-        viewer: 1,
-      };
-
-      // Owners can remove anyone except other owners (already checked above)
+      // Owners can remove anyone except other owners
       // Admins can remove members and viewers, but not other admins
       // Members and viewers cannot remove anyone
-      if (currentUserRole === "owner") {
-        // Owners can remove anyone except other owners (already validated)
-      } else if (currentUserRole === "admin") {
-        if (targetMemberRole === "admin") {
-          throw new Error("Admins cannot remove other admins.");
-        }
-      } else {
-        throw new Error("You do not have permission to remove members.");
-      }
+      checkMemberRemovalPermissions(currentUserRole, targetMemberRole);
     }
 
     await deleteDocument(MEMBERSHIPS_COLLECTION, membershipId);
@@ -814,24 +830,23 @@ export const declineTeamInvitation = async (
  * @returns Object containing maxMembers and maxStorage limits
  */
 export const getSubscriptionPlanFeatures = (plan: SubscriptionPlan) => {
-  const planFeatures = {
-    free: {
-      maxMembers: 15,
-      maxStorage: 5, // GB
-    },
-    starter: {
-      maxMembers: Infinity, // No member limit for paid plans
-      maxStorage: 250, // GB
-    },
-    professional: {
-      maxMembers: Infinity,
-      maxStorage: Infinity, // Unlimited storage
-    },
-    enterprise: {
-      maxMembers: Infinity,
-      maxStorage: Infinity, // Unlimited everything
-    },
-  };
-
-  return planFeatures[plan];
+  switch (plan) {
+    case "starter":
+      return {
+        maxMembers: Infinity,
+        maxStorage: 250,
+      };
+    case "professional":
+    case "enterprise":
+      return {
+        maxMembers: Infinity,
+        maxStorage: Infinity,
+      };
+    case "free":
+    default:
+      return {
+        maxMembers: 15,
+        maxStorage: 5,
+      };
+  }
 };

@@ -53,19 +53,22 @@ const SystemHealthCard = () => {
         Service Status
       </h3>
       <div className="space-y-3">
-        {systemStatuses.map((service, index) => (
-          <div key={index} className="flex justify-between items-center py-1.5">
+        {systemStatuses.map((service) => (
+          <div
+            key={service.name}
+            className="flex justify-between items-center py-1.5"
+          >
             <span className="text-sm text-gray-700 dark:text-gray-300">
               {service.name}
             </span>
             <span
-              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                service.statusColor === "green"
-                  ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                  : service.statusColor === "yellow"
-                    ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
-                    : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-              }`}
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${(() => {
+                if (service.statusColor === "green")
+                  return "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400";
+                if (service.statusColor === "yellow")
+                  return "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400";
+                return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+              })()}`}
             >
               {service.status}
             </span>
@@ -82,7 +85,7 @@ const SystemHealthCard = () => {
             {/* Calculate and display time elapsed since last update in minutes */}
             {isLoading
               ? "Loading..."
-              : `${Math.floor((new Date().getTime() - lastUpdated.getTime()) / 60000)} minutes ago`}
+              : `${Math.floor((Date.now() - lastUpdated.getTime()) / 60000)} minutes ago`}
           </span>
         </div>
       </div>

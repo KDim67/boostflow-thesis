@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/useAuth";
 import {
   hasOrganizationPermission,
@@ -9,8 +9,6 @@ import {
 } from "@/lib/firebase/organizationService";
 import { getDocument } from "@/lib/firebase/firestoreService";
 import WorkflowList from "@/components/dashboard/WorkflowList";
-
-import { useRouter } from "next/navigation";
 import { Organization, Project } from "@/lib/types/organization";
 
 /**
@@ -34,10 +32,8 @@ export default function ProjectWorkflowsPage() {
   const { user } = useAuth();
 
   // Normalize route parameters to handle both string and array formats
-  const organizationId = Array.isArray(id) ? id[0] : (id as string);
-  const projectIdString = Array.isArray(projectId)
-    ? projectId[0]
-    : (projectId as string);
+  const organizationId = Array.isArray(id) ? id[0] : id;
+  const projectIdString = Array.isArray(projectId) ? projectId[0] : projectId;
 
   // Load organization and project data with permission validation
   useEffect(() => {

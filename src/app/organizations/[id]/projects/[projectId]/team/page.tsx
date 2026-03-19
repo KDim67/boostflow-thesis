@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+
 import { useAuth } from "@/lib/firebase/useAuth";
 import {
   getOrganization,
@@ -28,7 +28,7 @@ interface TeamMember {
   projectId: string;
   userId: string; // Reference to the user's Firebase UID
   createdBy: string; // UID of the user who added this member to the team
-  createdAt: any; // Firestore timestamp
+  createdAt: unknown; // Firestore timestamp
 }
 
 /**
@@ -328,16 +328,16 @@ function InviteTeamMemberModal({
   organizationMembers,
   existingTeamMembers,
   onMemberInvited,
-}: InviteTeamMemberModalProps) {
-  // Early return if required props are missing
-  if (!organizationId || !projectId) return null;
-
+}: Readonly<InviteTeamMemberModalProps>) {
   // Form state management
   const [selectedMemberId, setSelectedMemberId] = useState("");
   const [role, setRole] = useState("Developer");
   const [customRole, setCustomRole] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuth();
+
+  // Early return if required props are missing
+  if (!organizationId || !projectId) return null;
 
   // Filter organization members to exclude those already on the team
   const availableMembers = organizationMembers.filter(

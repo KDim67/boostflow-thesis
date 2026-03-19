@@ -11,7 +11,7 @@ export default function LoginForm() {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  const { login, loginWithGoogle, error, clearError } = useAuth();
+  const { login, clearError } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -28,12 +28,12 @@ export default function LoginForm() {
     clearError();
 
     try {
-      const userCredential = await login(email, password);
+      await login(email, password);
 
       // Proceed to organizations
       router.push("/organizations");
-    } catch (error: any) {
-      setErrorMessage(error.message || "Failed to log in");
+    } catch (error: unknown) {
+      setErrorMessage((error as Error).message || "Failed to log in");
     } finally {
       setIsLoading(false);
     }

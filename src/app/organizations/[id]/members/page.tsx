@@ -8,13 +8,14 @@ import {
   getOrganization,
   getOrganizationMembers,
   hasOrganizationPermission,
-  inviteTeamMember,
   updateOrganizationMembership,
   removeOrganizationMember,
 } from "@/lib/firebase/organizationService";
 import { Organization, OrganizationMembership } from "@/lib/types/organization";
-import { NotificationService } from "@/lib/firebase/notificationService";
+
 import Badge from "@/components/Badge";
+
+type OrganizationRole = "admin" | "member" | "viewer";
 
 /**
  * OrganizationMembers component manages the members page for a specific organization.
@@ -33,17 +34,13 @@ export default function OrganizationMembers() {
   // Member invitation state
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"admin" | "member" | "viewer">(
-    "member"
-  );
+  const [inviteRole, setInviteRole] = useState<OrganizationRole>("member");
   const [isInviting, setIsInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
   // Member editing state
   const [editingMember, setEditingMember] = useState<string | null>(null); // Stores membership ID being edited
-  const [editRole, setEditRole] = useState<"admin" | "member" | "viewer">(
-    "member"
-  );
+  const [editRole, setEditRole] = useState<OrganizationRole>("member");
   const [isUpdating, setIsUpdating] = useState(false);
 
   // Member removal and leaving state
@@ -155,9 +152,13 @@ export default function OrganizationMembers() {
           result.error || "Failed to send invitation. Please try again."
         );
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error inviting member:", error);
-      setInviteError("Failed to send invitation. Please try again.");
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to send invitation. Please try again.";
+      setInviteError(errorMessage);
     } finally {
       setIsInviting(false);
     }
@@ -169,7 +170,7 @@ export default function OrganizationMembers() {
    */
   const handleEditMember = (member: OrganizationMembership) => {
     setEditingMember(member.id);
-    setEditRole(member.role as "admin" | "member" | "viewer");
+    setEditRole(member.role as OrganizationRole);
   };
 
   /**
@@ -191,9 +192,13 @@ export default function OrganizationMembers() {
       // Refresh member list to show updated role
       const membersData = await getOrganizationMembers(organizationId);
       setMembers(membersData);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error updating member:", error);
-      setError(error.message || "Failed to update member. Please try again.");
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to update member. Please try again.";
+      setError(errorMessage);
     } finally {
       setIsUpdating(false);
     }
@@ -237,9 +242,13 @@ export default function OrganizationMembers() {
       // Refresh member list to remove the deleted member from UI
       const membersData = await getOrganizationMembers(organizationId);
       setMembers(membersData);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error removing member:", error);
-      setError(error.message || "Failed to remove member. Please try again.");
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to remove member. Please try again.";
+      setError(errorMessage);
     } finally {
       setIsRemoving(null);
     }
@@ -289,6 +298,9 @@ export default function OrganizationMembers() {
           (member) => member.userId !== user.uid
         );
 
+        const { NotificationService } =
+          await import("@/lib/firebase/notificationService");
+
         // Create notification promises for all remaining members
         const notificationPromises = allRemainingMembers.map((member) =>
           NotificationService.createNotification(
@@ -318,12 +330,14 @@ export default function OrganizationMembers() {
       }
 
       // Redirect to organizations list after successful leave
-      window.location.href = "/organizations";
-    } catch (error: any) {
+      globalThis.location.href = "/organizations";
+    } catch (error) {
       console.error("Error leaving organization:", error);
-      setError(
-        error.message || "Failed to leave organization. Please try again."
-      );
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to leave organization. Please try again.";
+      setError(errorMessage);
     } finally {
       setIsLeaving(false);
     }
@@ -341,7 +355,7 @@ export default function OrganizationMembers() {
       const names = displayName.trim().split(" ");
       // Use first and last name initials if available
       if (names.length >= 2) {
-        return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+        return (names[0][0] + (names.at(-1)?.[0] ?? "")).toUpperCase();
       }
       // Fall back to first character of display name
       return displayName[0].toUpperCase();
@@ -481,6 +495,20 @@ export default function OrganizationMembers() {
   };
 
   /**
+   * Formats the joined date handling different Date object formats from Firestore
+   */
+  const formatJoinedDate = (joinedAt: any) => {
+    if (!joinedAt) return "N/A";
+    if (joinedAt.seconds !== undefined) {
+      return new Date(joinedAt.seconds * 1000).toLocaleDateString();
+    }
+    if (typeof joinedAt.getTime === "function") {
+      return new Date(joinedAt).toLocaleDateString();
+    }
+    return new Date(Date.now()).toLocaleDateString();
+  };
+
+  /**
    * Sorts members by role hierarchy (owners first, then admins, members, viewers).
    * Creates a new array to avoid mutating the original members state.
    */
@@ -546,7 +574,7 @@ export default function OrganizationMembers() {
                     setInviteRole(
                       availableRoles.includes("member")
                         ? "member"
-                        : (availableRoles[0] as "admin" | "member" | "viewer")
+                        : (availableRoles[0] as OrganizationRole)
                     );
                   }
                   setInviteEmail("");
@@ -602,9 +630,7 @@ export default function OrganizationMembers() {
                     id="role"
                     value={inviteRole}
                     onChange={(e) =>
-                      setInviteRole(
-                        e.target.value as "admin" | "member" | "viewer"
-                      )
+                      setInviteRole(e.target.value as OrganizationRole)
                     }
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
                   >
@@ -736,9 +762,7 @@ export default function OrganizationMembers() {
                         <select
                           value={editRole}
                           onChange={(e) =>
-                            setEditRole(
-                              e.target.value as "admin" | "member" | "viewer"
-                            )
+                            setEditRole(e.target.value as OrganizationRole)
                           }
                           className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
                           disabled={member.role === "owner"}
@@ -757,11 +781,7 @@ export default function OrganizationMembers() {
                       <Badge type="status" value={member.status} size="sm" />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      {member.joinedAt
-                        ? new Date(
-                            member.joinedAt.seconds * 1000
-                          ).toLocaleDateString()
-                        : "N/A"}
+                      {formatJoinedDate(member.joinedAt)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       {editingMember === member.id ? (

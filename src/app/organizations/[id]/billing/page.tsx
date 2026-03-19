@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import type { User } from "firebase/auth";
 import { useAuth } from "@/lib/firebase/useAuth";
 import {
   getOrganization,
@@ -12,6 +13,373 @@ import {
 } from "@/lib/firebase/organizationService";
 import { Organization, SubscriptionPlan } from "@/lib/types/organization";
 import { NotificationService } from "@/lib/firebase/notificationService";
+
+// Base monthly pricing per user (in EUR) before discounts
+const basePrices = {
+  starter: 7.49,
+  pro: 15,
+};
+
+/**
+ * Returns feature list for each subscription plan
+ * Used to display plan capabilities in the pricing cards
+ */
+const getPlanFeatures = (plan: SubscriptionPlan) => {
+  switch (plan) {
+    case "free":
+      return [
+        "Up to 15 users",
+        "Limited automation workflows",
+        "Basic analytics",
+        "4 GB storage",
+        "Community support",
+      ];
+    case "starter":
+      return [
+        "Unlimited Users",
+        "Basic automation workflows",
+        "Standard analytics",
+        "250 GB storage",
+        "Email support",
+      ];
+    case "professional":
+      return [
+        "Unlimited users",
+        "Advanced automation workflows",
+        "AI-powered analytics",
+        "Unlimited Storage",
+        "Priority support",
+      ];
+    case "enterprise":
+      return [
+        "Everything in Pro plan",
+        "Custom AI model training",
+        "Dedicated account manager",
+        "Custom integrations",
+        "24/7 phone support",
+        "On-premise deployment",
+      ];
+    default:
+      return [];
+  }
+};
+
+/**
+ * Returns the pricing unit text for display (e.g., "/month per user")
+ */
+const getPlanPriceUnit = (plan: SubscriptionPlan) => {
+  switch (plan) {
+    case "free":
+      return "/forever";
+    case "starter":
+      return "/month per user";
+    case "professional":
+      return "/month per user";
+    case "enterprise":
+      return "";
+    default:
+      return "";
+  }
+};
+
+/**
+ * Returns numeric order for plan comparison (used to determine upgrades vs downgrades)
+ */
+const getPlanOrder = (plan: SubscriptionPlan): number => {
+  switch (plan) {
+    case "free":
+      return 0;
+    case "starter":
+      return 1;
+    case "professional":
+      return 2;
+    case "enterprise":
+      return 3;
+    default:
+      return 0;
+  }
+};
+
+/**
+ * Determines if a plan change is a downgrade (affects notification messaging)
+ */
+const isDowngrade = (
+  currentPlan: SubscriptionPlan,
+  newPlan: SubscriptionPlan
+): boolean => {
+  return getPlanOrder(newPlan) < getPlanOrder(currentPlan);
+};
+
+function computePricePerUser(
+  selectedPlan: SubscriptionPlan,
+  teamSize: number,
+  billingCycle: string
+): number {
+  if (selectedPlan === "starter") {
+    return Number.parseFloat(
+      calculatePrice(basePrices.starter, teamSize, billingCycle)
+    );
+  }
+  if (selectedPlan === "professional") {
+    return Number.parseFloat(
+      calculatePrice(basePrices.pro, teamSize, billingCycle)
+    );
+  }
+  return 0;
+}
+
+function computeTotalPrice(
+  selectedPlan: SubscriptionPlan,
+  teamSize: number,
+  billingCycle: string
+): number {
+  if (selectedPlan === "free" || selectedPlan === "enterprise") {
+    return 0;
+  }
+  const basePrice =
+    selectedPlan === "starter" ? basePrices.starter : basePrices.pro;
+  return (
+    Number.parseFloat(calculatePrice(basePrice, teamSize, billingCycle)) *
+    teamSize
+  );
+}
+
+function getFreePlanButtonClass(
+  teamSize: number,
+  plan: SubscriptionPlan
+): string {
+  if (teamSize > 15) return "bg-gray-300 text-gray-500 cursor-not-allowed";
+  if (plan === "free") return "bg-gray-600 text-white";
+  return "bg-white text-gray-600 border border-gray-600 hover:bg-gray-50";
+}
+
+function getFreePlanBillingButtonLabel(
+  teamSize: number,
+  orgPlan: SubscriptionPlan
+): string {
+  if (teamSize > 15) return "Not Available";
+  if (orgPlan === "free") return "Current Plan";
+  return "Select Plan";
+}
+
+function getBillingCycleButtonClass(cycle: string, selected: string): string {
+  const activeClass = "bg-white dark:bg-gray-600 shadow-sm";
+  const inactiveClass = "text-gray-600 dark:text-gray-300";
+  return `flex items-center justify-center px-4 py-2 rounded-full transition-all ${cycle === selected ? activeClass : inactiveClass}`;
+}
+
+function getOrgPlanButtonText(
+  orgPlan: SubscriptionPlan,
+  buttonPlan: SubscriptionPlan
+): string {
+  if (orgPlan === buttonPlan) return "Current Plan";
+  return buttonPlan === "enterprise" ? "Contact Sales" : "Select Plan";
+}
+
+function getPlanCardClasses(
+  plan: SubscriptionPlan,
+  selectedPlan: SubscriptionPlan
+): string {
+  const borderMap: Record<
+    SubscriptionPlan,
+    { selected: string; unselected: string }
+  > = {
+    free: {
+      selected: "border-gray-500 ring-2 ring-gray-500",
+      unselected:
+        "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600",
+    },
+    starter: {
+      selected: "border-blue-500 ring-2 ring-blue-500",
+      unselected:
+        "border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600",
+    },
+    professional: {
+      selected: "border-purple-500 ring-2 ring-purple-500",
+      unselected:
+        "border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600",
+    },
+    enterprise: {
+      selected: "border-green-500 ring-2 ring-green-500",
+      unselected:
+        "border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-600",
+    },
+  };
+  const { selected, unselected } = borderMap[plan];
+  return `bg-white dark:bg-gray-800 rounded-xl shadow-md p-8 border transition-all hover:shadow-lg relative flex flex-col h-full ${plan === selectedPlan ? selected : unselected}`;
+}
+
+function getPlanButtonClasses(
+  plan: SubscriptionPlan,
+  selectedPlan: SubscriptionPlan
+): string {
+  const classMap: Record<string, { selected: string; unselected: string }> = {
+    starter: {
+      selected: "bg-blue-600 text-white",
+      unselected:
+        "bg-white text-blue-600 border border-blue-600 hover:bg-blue-50",
+    },
+    professional: {
+      selected:
+        "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg",
+      unselected:
+        "bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg",
+    },
+    enterprise: {
+      selected: "bg-green-600 text-white",
+      unselected:
+        "bg-white text-green-600 border border-green-600 hover:bg-green-50",
+    },
+  };
+  const classes = classMap[plan];
+  return `w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${plan === selectedPlan ? classes.selected : classes.unselected}`;
+}
+
+async function fetchOrganizationBillingData(
+  user: User,
+  organizationId: string,
+  setIsLoading: (v: boolean) => void,
+  setError: (v: string | null) => void,
+  setOrganization: (v: Organization | null) => void,
+  setSelectedPlan: (v: SubscriptionPlan) => void,
+  setTeamSize: (v: number) => void
+): Promise<void> {
+  try {
+    setIsLoading(true);
+    setError(null);
+    const permission = await hasOrganizationPermission(
+      user.uid,
+      organizationId,
+      "admin"
+    );
+    if (!permission) {
+      setError(
+        "You do not have permission to manage billing for this organization."
+      );
+      setIsLoading(false);
+      return;
+    }
+    const orgData = await getOrganization(organizationId);
+    setOrganization(orgData);
+    if (orgData) {
+      setSelectedPlan(orgData.plan);
+      if (orgData.subscriptionDetails?.teamSize) {
+        setTeamSize(orgData.subscriptionDetails.teamSize);
+      } else {
+        const members = await getOrganizationMembers(organizationId);
+        const activeMembers = members.filter(
+          (member) => member.status === "active"
+        );
+        setTeamSize(
+          Math.max(activeMembers.length, orgData.plan === "free" ? 15 : 50)
+        );
+      }
+    }
+  } catch (err) {
+    console.error("Error fetching billing data:", err);
+    setError("Failed to load billing data. Please try again.");
+  } finally {
+    setIsLoading(false);
+  }
+}
+
+interface PlanUpdateCallbacks {
+  setIsUpdating: (v: boolean) => void;
+  setError: (v: string | null) => void;
+  setSuccessMessage: (v: string | null) => void;
+  setOrganization: (v: Organization | null) => void;
+}
+
+async function performPlanUpdate(
+  organization: Organization,
+  organizationId: string,
+  selectedPlan: SubscriptionPlan,
+  teamSize: number,
+  billingCycle: string,
+  callbacks: PlanUpdateCallbacks
+): Promise<void> {
+  const currentMembers = await getOrganizationMembers(organizationId);
+  const activeMembers = currentMembers.filter(
+    (member) => member.status === "active"
+  );
+
+  if (selectedPlan === "free" && teamSize > 15) {
+    callbacks.setError(
+      "Free plan is limited to 15 users. Please reduce team size or choose a different plan."
+    );
+    return;
+  }
+
+  if (activeMembers.length > teamSize) {
+    callbacks.setError(
+      `Cannot set team size to ${teamSize}. You currently have ${activeMembers.length} active members. Please remove members first or increase the team size.`
+    );
+    return;
+  }
+
+  callbacks.setIsUpdating(true);
+  try {
+    const subscriptionDetails = {
+      teamSize,
+      billingCycle,
+      pricePerUser: computePricePerUser(selectedPlan, teamSize, billingCycle),
+      totalPrice: computeTotalPrice(selectedPlan, teamSize, billingCycle),
+      subscribedAt: new Date().toISOString(),
+      discount: getCurrentDiscount(teamSize),
+    };
+    await updateOrganization(organizationId, {
+      plan: selectedPlan,
+      subscriptionDetails,
+      updatedAt: new Date().toISOString(),
+    });
+    const isDowngradeChange = isDowngrade(organization.plan, selectedPlan);
+    const changeType = isDowngradeChange ? "downgraded" : "upgraded";
+    try {
+      const members = await getOrganizationMembers(organizationId);
+      const membersToNotify = members.filter(
+        (member) => member.status === "active"
+      );
+      await Promise.all(
+        membersToNotify.map((member) =>
+          NotificationService.createNotification(
+            member.userId,
+            `Organization Plan ${changeType.charAt(0).toUpperCase() + changeType.slice(1)}`,
+            `Your organization's plan has been ${changeType} to ${selectedPlan}. ${isDowngradeChange ? "Some features may no longer be available." : "You now have access to additional features!"}`,
+            isDowngradeChange ? "plan_downgrade" : "plan_upgrade",
+            organizationId,
+            `/organizations/${organizationId}/billing`,
+            {
+              previousPlan: organization.plan,
+              newPlan: selectedPlan,
+              organizationId,
+            }
+          )
+        )
+      );
+    } catch (notificationError) {
+      console.warn(
+        "Failed to send notifications to some members:",
+        notificationError
+      );
+    }
+    callbacks.setOrganization({
+      ...organization,
+      plan: selectedPlan,
+      subscriptionDetails,
+    });
+    callbacks.setSuccessMessage(
+      `Successfully ${changeType} to ${selectedPlan} plan!`
+    );
+    callbacks.setError(null);
+    setTimeout(() => callbacks.setSuccessMessage(null), 5000);
+  } catch (error) {
+    console.error("Error updating plan:", error);
+    callbacks.setError("Failed to update plan. Please try again.");
+    callbacks.setSuccessMessage(null);
+  } finally {
+    callbacks.setIsUpdating(false);
+  }
+}
 
 /**
  * OrganizationBilling Component
@@ -23,6 +391,154 @@ import { NotificationService } from "@/lib/firebase/notificationService";
  * - Apply volume discounts based on team size
  * - Handle plan change notifications to organization members
  */
+
+/**
+ * Calculates discounted price per user based on team size and billing cycle
+ * Volume discounts: 5% (20+ users), 10% (50+), 15% (100+), 20% (300+), 25% (500+)
+ * Annual billing discount: 17% off monthly price
+ */
+const calculatePrice = (
+  basePrice: number,
+  teamSize: number,
+  billingCycle: string
+) => {
+  let discount = 0;
+
+  // Apply volume discounts based on team size tiers
+  if (teamSize > 500) {
+    discount = 0.25; // 25% discount for 500+ users
+  } else if (teamSize > 300) {
+    discount = 0.2; // 20% discount for 300+ users
+  } else if (teamSize > 100) {
+    discount = 0.15; // 15% discount for 100+ users
+  } else if (teamSize > 50) {
+    discount = 0.1; // 10% discount for 50+ users
+  } else if (teamSize > 20) {
+    discount = 0.05; // 5% discount for 20+ users
+  }
+
+  // Additional discount for annual billing
+  const annualDiscount = billingCycle === "annually" ? 0.17 : 0;
+
+  // Apply both volume and annual discounts
+  const discountedPrice = basePrice * (1 - discount) * (1 - annualDiscount);
+  return discountedPrice.toFixed(2);
+};
+
+/**
+ * Returns the current volume discount percentage based on team size
+ * Used for displaying discount information in the UI
+ */
+const getCurrentDiscount = (teamSize: number) => {
+  if (teamSize > 500) return 25;
+  if (teamSize > 300) return 20;
+  if (teamSize > 100) return 15;
+  if (teamSize > 50) return 10;
+  if (teamSize > 20) return 5;
+  return 0;
+};
+
+/**
+ * Returns formatted price string for a given plan
+ * Uses current subscription price if viewing the active plan,
+ * otherwise calculates price based on current team size and billing cycle
+ */
+const getPlanPrice = (
+  plan: SubscriptionPlan,
+  organization: Organization | null,
+  teamSize: number,
+  billingCycle: string
+) => {
+  // Show actual subscription price for current plan
+  if (organization?.subscriptionDetails && organization.plan === plan) {
+    if (plan === "free") return "€0";
+    if (plan === "enterprise") return "Custom";
+    return `€${organization.subscriptionDetails.pricePerUser.toFixed(2)}`;
+  }
+
+  // Calculate price for plan selection
+  switch (plan) {
+    case "free":
+      return "€0";
+    case "starter":
+      return `€${calculatePrice(basePrices.starter, teamSize, billingCycle)}`;
+    case "professional":
+      return `€${calculatePrice(basePrices.pro, teamSize, billingCycle)}`;
+    case "enterprise":
+      return "Custom";
+    default:
+      return "€0";
+  }
+};
+
+interface UpdatePlanSectionProps {
+  selectedPlan: SubscriptionPlan;
+  organization: Organization;
+  teamSize: number;
+  billingCycle: string;
+  isUpdating: boolean;
+  handleUpdatePlan: () => Promise<void>;
+}
+
+const UpdatePlanSection = ({
+  selectedPlan,
+  organization,
+  teamSize,
+  billingCycle,
+  isUpdating,
+  handleUpdatePlan,
+}: UpdatePlanSectionProps) => {
+  if (selectedPlan === organization.plan) return null;
+
+  const getUpdateButtonText = () => {
+    if (isUpdating) return "Updating...";
+    const action = isDowngrade(organization.plan, selectedPlan)
+      ? "Downgrade to"
+      : "Upgrade to";
+    const planName =
+      selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1);
+    return `${action} ${planName}`;
+  };
+
+  return (
+    <div className="mt-8 p-6 bg-blue-50 dark:bg-blue-900 rounded-lg">
+      <h3 className="text-lg font-semibold mb-2 text-blue-900 dark:text-blue-100">
+        {isDowngrade(organization.plan, selectedPlan)
+          ? "Downgrade to"
+          : "Upgrade to"}{" "}
+        {selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)} Plan
+      </h3>
+      <p className="text-blue-700 dark:text-blue-200 mb-4">
+        {(() => {
+          if (selectedPlan === "free")
+            return "You will switch to the free plan with limited features.";
+          if (selectedPlan === "enterprise")
+            return "Contact our sales team for custom enterprise pricing.";
+          return `You will be charged ${getPlanPrice(
+            selectedPlan,
+            organization,
+            teamSize,
+            billingCycle
+          )} per user/month for ${teamSize} users (${billingCycle} billing).`;
+        })()}
+      </p>
+      <button
+        onClick={handleUpdatePlan}
+        disabled={isUpdating || (selectedPlan === "free" && teamSize > 15)}
+        className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {getUpdateButtonText()}
+      </button>
+      {selectedPlan === "free" && teamSize > 15 && (
+        <p className="text-red-600 dark:text-red-400 text-sm mt-2">
+          Cannot select free plan with more than 15 users. Please reduce team
+          size to 15 or less.
+        </p>
+      )}
+    </div>
+  );
+};
+
 export default function OrganizationBilling() {
   const { id } = useParams();
   // Core organization and UI state
@@ -48,55 +564,16 @@ export default function OrganizationBilling() {
    * - Sets team size based on existing subscription or active member count
    */
   useEffect(() => {
-    const fetchBillingData = async () => {
-      if (!user || !organizationId) return;
-
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        // Verify user has admin permissions to manage billing
-        const permission = await hasOrganizationPermission(
-          user.uid,
-          organizationId,
-          "admin"
-        );
-
-        if (!permission) {
-          setError(
-            "You do not have permission to manage billing for this organization."
-          );
-          setIsLoading(false);
-          return;
-        }
-
-        const orgData = await getOrganization(organizationId);
-        setOrganization(orgData);
-        if (orgData) {
-          setSelectedPlan(orgData.plan);
-          // Use existing team size or calculate from active members
-          if (orgData.subscriptionDetails?.teamSize) {
-            setTeamSize(orgData.subscriptionDetails.teamSize);
-          } else {
-            const members = await getOrganizationMembers(organizationId);
-            const activeMembers = members.filter(
-              (member) => member.status === "active"
-            );
-            // Set minimum team size based on plan limits
-            setTeamSize(
-              Math.max(activeMembers.length, orgData.plan === "free" ? 15 : 50)
-            );
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching billing data:", error);
-        setError("Failed to load billing data. Please try again.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchBillingData();
+    if (!user || !organizationId) return;
+    fetchOrganizationBillingData(
+      user,
+      organizationId,
+      setIsLoading,
+      setError,
+      setOrganization,
+      setSelectedPlan,
+      setTeamSize
+    );
   }, [user, organizationId]);
 
   /**
@@ -108,281 +585,14 @@ export default function OrganizationBilling() {
    */
   const handleUpdatePlan = async () => {
     if (!organization || !organizationId) return;
-
-    // Get current active members for validation
-    const currentMembers = await getOrganizationMembers(organizationId);
-    const activeMembers = currentMembers.filter(
-      (member) => member.status === "active"
+    await performPlanUpdate(
+      organization,
+      organizationId,
+      selectedPlan,
+      teamSize,
+      billingCycle,
+      { setIsUpdating, setError, setSuccessMessage, setOrganization }
     );
-
-    // Validate free plan user limit
-    if (selectedPlan === "free" && teamSize > 15) {
-      setError(
-        "Free plan is limited to 15 users. Please reduce team size or choose a different plan."
-      );
-      return;
-    }
-
-    // Ensure team size accommodates current active members
-    if (activeMembers.length > teamSize) {
-      setError(
-        `Cannot set team size to ${teamSize}. You currently have ${activeMembers.length} active members. Please remove members first or increase the team size.`
-      );
-      return;
-    }
-
-    setIsUpdating(true);
-    try {
-      // Calculate subscription pricing details with discounts
-      const subscriptionDetails = {
-        teamSize,
-        billingCycle,
-        pricePerUser:
-          selectedPlan === "starter"
-            ? parseFloat(calculatePrice(basePrices.starter))
-            : selectedPlan === "professional"
-              ? parseFloat(calculatePrice(basePrices.pro))
-              : 0,
-        totalPrice:
-          selectedPlan === "free"
-            ? 0
-            : selectedPlan === "enterprise"
-              ? 0 // Enterprise pricing is custom
-              : parseFloat(
-                  calculatePrice(
-                    selectedPlan === "starter"
-                      ? basePrices.starter
-                      : basePrices.pro
-                  )
-                ) * teamSize,
-        subscribedAt: new Date().toISOString(),
-        discount: getCurrentDiscount(), // Volume discount based on team size
-      };
-
-      await updateOrganization(organizationId, {
-        plan: selectedPlan,
-        subscriptionDetails,
-        updatedAt: new Date().toISOString(),
-      });
-
-      const isDowngradeChange = isDowngrade(organization.plan, selectedPlan);
-      const changeType = isDowngradeChange ? "downgraded" : "upgraded";
-
-      // Send plan change notifications to all active organization members
-      try {
-        const members = await getOrganizationMembers(organizationId);
-        const activeMembers = members.filter(
-          (member) => member.status === "active"
-        );
-
-        // Create notification promises for all active members
-        const notificationPromises = activeMembers.map((member) =>
-          NotificationService.createNotification(
-            member.userId,
-            `Organization Plan ${changeType.charAt(0).toUpperCase() + changeType.slice(1)}`,
-            `Your organization's plan has been ${changeType} to ${selectedPlan}. ${isDowngradeChange ? "Some features may no longer be available." : "You now have access to additional features!"}`,
-            isDowngradeChange ? "plan_downgrade" : "plan_upgrade",
-            organizationId,
-            `/organizations/${organizationId}/billing`,
-            {
-              previousPlan: organization.plan,
-              newPlan: selectedPlan,
-              organizationId: organizationId,
-            }
-          )
-        );
-
-        // Send all notifications concurrently
-        await Promise.all(notificationPromises);
-      } catch (notificationError) {
-        console.warn(
-          "Failed to send notifications to some members:",
-          notificationError
-        );
-      }
-
-      setOrganization({
-        ...organization,
-        plan: selectedPlan,
-        subscriptionDetails,
-      });
-
-      setSuccessMessage(`Successfully ${changeType} to ${selectedPlan} plan!`);
-      setError(null);
-      setTimeout(() => setSuccessMessage(null), 5000);
-    } catch (error) {
-      console.error("Error updating plan:", error);
-      setError("Failed to update plan. Please try again.");
-      setSuccessMessage(null);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  // Base monthly pricing per user (in EUR) before discounts
-  const basePrices = {
-    starter: 7.49,
-    pro: 15,
-  };
-
-  /**
-   * Calculates discounted price per user based on team size and billing cycle
-   * Volume discounts: 5% (20+ users), 10% (50+), 15% (100+), 20% (300+), 25% (500+)
-   * Annual billing discount: 17% off monthly price
-   */
-  const calculatePrice = (basePrice: number) => {
-    let discount = 0;
-
-    // Apply volume discounts based on team size tiers
-    if (teamSize > 500) {
-      discount = 0.25; // 25% discount for 500+ users
-    } else if (teamSize > 300) {
-      discount = 0.2; // 20% discount for 300+ users
-    } else if (teamSize > 100) {
-      discount = 0.15; // 15% discount for 100+ users
-    } else if (teamSize > 50) {
-      discount = 0.1; // 10% discount for 50+ users
-    } else if (teamSize > 20) {
-      discount = 0.05; // 5% discount for 20+ users
-    }
-
-    // Additional discount for annual billing
-    const annualDiscount = billingCycle === "annually" ? 0.17 : 0;
-
-    // Apply both volume and annual discounts
-    const discountedPrice = basePrice * (1 - discount) * (1 - annualDiscount);
-    return discountedPrice.toFixed(2);
-  };
-
-  /**
-   * Returns the current volume discount percentage based on team size
-   * Used for displaying discount information in the UI
-   */
-  const getCurrentDiscount = () => {
-    if (teamSize > 500) return 25;
-    if (teamSize > 300) return 20;
-    if (teamSize > 100) return 15;
-    if (teamSize > 50) return 10;
-    if (teamSize > 20) return 5;
-    return 0;
-  };
-
-  /**
-   * Returns feature list for each subscription plan
-   * Used to display plan capabilities in the pricing cards
-   */
-  const getPlanFeatures = (plan: SubscriptionPlan) => {
-    switch (plan) {
-      case "free":
-        return [
-          "Up to 15 users",
-          "Limited automation workflows",
-          "Basic analytics",
-          "4 GB storage",
-          "Community support",
-        ];
-      case "starter":
-        return [
-          "Unlimited Users",
-          "Basic automation workflows",
-          "Standard analytics",
-          "250 GB storage",
-          "Email support",
-        ];
-      case "professional":
-        return [
-          "Unlimited users",
-          "Advanced automation workflows",
-          "AI-powered analytics",
-          "Unlimited Storage",
-          "Priority support",
-        ];
-      case "enterprise":
-        return [
-          "Everything in Pro plan",
-          "Custom AI model training",
-          "Dedicated account manager",
-          "Custom integrations",
-          "24/7 phone support",
-          "On-premise deployment",
-        ];
-      default:
-        return [];
-    }
-  };
-
-  /**
-   * Returns formatted price string for a given plan
-   * Uses current subscription price if viewing the active plan,
-   * otherwise calculates price based on current team size and billing cycle
-   */
-  const getPlanPrice = (plan: SubscriptionPlan) => {
-    // Show actual subscription price for current plan
-    if (organization?.subscriptionDetails && organization.plan === plan) {
-      if (plan === "free") return "€0";
-      if (plan === "enterprise") return "Custom";
-      return `€${organization.subscriptionDetails.pricePerUser.toFixed(2)}`;
-    }
-
-    // Calculate price for plan selection
-    switch (plan) {
-      case "free":
-        return "€0";
-      case "starter":
-        return `€${calculatePrice(basePrices.starter)}`;
-      case "professional":
-        return `€${calculatePrice(basePrices.pro)}`;
-      case "enterprise":
-        return "Custom";
-      default:
-        return "€0";
-    }
-  };
-
-  /**
-   * Returns the pricing unit text for display (e.g., "/month per user")
-   */
-  const getPlanPriceUnit = (plan: SubscriptionPlan) => {
-    switch (plan) {
-      case "free":
-        return "/forever";
-      case "starter":
-        return "/month per user";
-      case "professional":
-        return "/month per user";
-      case "enterprise":
-        return "";
-      default:
-        return "";
-    }
-  };
-
-  /**
-   * Returns numeric order for plan comparison (used to determine upgrades vs downgrades)
-   */
-  const getPlanOrder = (plan: SubscriptionPlan): number => {
-    switch (plan) {
-      case "free":
-        return 0;
-      case "starter":
-        return 1;
-      case "professional":
-        return 2;
-      case "enterprise":
-        return 3;
-      default:
-        return 0;
-    }
-  };
-
-  /**
-   * Determines if a plan change is a downgrade (affects notification messaging)
-   */
-  const isDowngrade = (
-    currentPlan: SubscriptionPlan,
-    newPlan: SubscriptionPlan
-  ): boolean => {
-    return getPlanOrder(newPlan) < getPlanOrder(currentPlan);
   };
 
   // Loading state with spinner
@@ -455,8 +665,8 @@ export default function OrganizationBilling() {
             </h3>
             <p className="text-gray-500 dark:text-gray-400">
               {organization.subscriptionDetails
-                ? `${getPlanPrice(organization.plan)} per user/month (${organization.subscriptionDetails.teamSize} users)`
-                : `${getPlanPrice(organization.plan)} per month`}
+                ? `${getPlanPrice(organization.plan, organization, teamSize, billingCycle)} per user/month (${organization.subscriptionDetails.teamSize} users)`
+                : `${getPlanPrice(organization.plan, organization, teamSize, billingCycle)} per month`}
             </p>
           </div>
         </div>
@@ -465,9 +675,9 @@ export default function OrganizationBilling() {
             Features:
           </h4>
           <ul className="space-y-2">
-            {getPlanFeatures(organization.plan).map((feature, index) => (
+            {getPlanFeatures(organization.plan).map((feature) => (
               <li
-                key={index}
+                key={feature}
                 className="flex items-center text-gray-600 dark:text-gray-300"
               >
                 <svg
@@ -562,7 +772,7 @@ export default function OrganizationBilling() {
                       max="1000"
                       value={teamSize}
                       onChange={(e) =>
-                        setTeamSize(parseInt(e.target.value) || 1)
+                        setTeamSize(Number.parseInt(e.target.value) || 1)
                       }
                       className="w-16 text-center border-none focus:ring-0 focus:outline-none bg-transparent text-gray-700 dark:text-gray-300"
                     />
@@ -578,7 +788,9 @@ export default function OrganizationBilling() {
                     min="1"
                     max="1000"
                     value={teamSize}
-                    onChange={(e) => setTeamSize(parseInt(e.target.value))}
+                    onChange={(e) =>
+                      setTeamSize(Number.parseInt(e.target.value))
+                    }
                     className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
                   />
                   <div className="relative mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -597,28 +809,33 @@ export default function OrganizationBilling() {
                     </span>
                   </div>
                 </div>
-                {getCurrentDiscount() > 0 && (
+                {getCurrentDiscount(teamSize) > 0 && (
                   <div className="mt-2 text-sm font-medium text-green-600 dark:text-green-400">
-                    {getCurrentDiscount()}% team size discount applied!
+                    {getCurrentDiscount(teamSize)}% team size discount applied!
                   </div>
                 )}
               </div>
 
               <div className="flex flex-col">
-                <label className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <span className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Bill me:
-                </label>
+                </span>
                 <div className="flex items-center gap-4 bg-gray-100 dark:bg-gray-700 p-1 rounded-full">
                   <button
                     onClick={() => setBillingCycle("monthly")}
-                    className={`flex items-center justify-center px-4 py-2 rounded-full transition-all ${billingCycle === "monthly" ? "bg-white dark:bg-gray-600 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+                    className={getBillingCycleButtonClass(
+                      "monthly",
+                      billingCycle
+                    )}
                   >
                     Monthly
                   </button>
-
                   <button
                     onClick={() => setBillingCycle("annually")}
-                    className={`flex items-center justify-center px-4 py-2 rounded-full transition-all ${billingCycle === "annually" ? "bg-white dark:bg-gray-600 shadow-sm" : "text-gray-600 dark:text-gray-300"}`}
+                    className={getBillingCycleButtonClass(
+                      "annually",
+                      billingCycle
+                    )}
                   >
                     Annually
                   </button>
@@ -635,20 +852,14 @@ export default function OrganizationBilling() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Free Plan */}
-          <div
-            className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-8 border transition-all hover:shadow-lg relative flex flex-col h-full ${
-              selectedPlan === "free"
-                ? "border-gray-500 ring-2 ring-gray-500"
-                : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-            }`}
-          >
+          <div className={getPlanCardClasses("free", selectedPlan)}>
             <div className="absolute top-0 left-0 right-0 h-2 bg-gray-500 rounded-t-xl"></div>
             <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
               Free
             </h3>
             <div className="mb-6">
               <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                {getPlanPrice("free")}
+                {getPlanPrice("free", organization, teamSize, billingCycle)}
               </span>
               <span className="text-gray-500 dark:text-gray-400">
                 {getPlanPriceUnit("free")}
@@ -658,8 +869,8 @@ export default function OrganizationBilling() {
               Perfect for individuals and small projects to get started.
             </p>
             <ul className="space-y-3 mb-8 flex-grow">
-              {getPlanFeatures("free").map((feature, index) => (
-                <li key={index} className="flex items-start">
+              {getPlanFeatures("free").map((feature) => (
+                <li key={feature} className="flex items-start">
                   <svg
                     className="h-6 w-6 text-gray-500 mr-2 flex-shrink-0"
                     fill="none"
@@ -684,20 +895,10 @@ export default function OrganizationBilling() {
               onClick={
                 teamSize > 15 ? undefined : () => setSelectedPlan("free")
               }
-              className={`w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${
-                teamSize > 15
-                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  : selectedPlan === "free"
-                    ? "bg-gray-600 text-white"
-                    : "bg-white text-gray-600 border border-gray-600 hover:bg-gray-50"
-              }`}
+              className={`w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${getFreePlanButtonClass(teamSize, selectedPlan)}`}
               disabled={teamSize > 15}
             >
-              {teamSize > 15
-                ? "Not Available"
-                : organization.plan === "free"
-                  ? "Current Plan"
-                  : "Select Plan"}
+              {getFreePlanBillingButtonLabel(teamSize, organization.plan)}
             </button>
             {teamSize > 15 && (
               <p className="text-xs text-red-500 mt-2 text-center">
@@ -707,20 +908,14 @@ export default function OrganizationBilling() {
           </div>
 
           {/* Starter Plan */}
-          <div
-            className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-8 border transition-all hover:shadow-lg relative flex flex-col h-full ${
-              selectedPlan === "starter"
-                ? "border-blue-500 ring-2 ring-blue-500"
-                : "border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600"
-            }`}
-          >
+          <div className={getPlanCardClasses("starter", selectedPlan)}>
             <div className="absolute top-0 left-0 right-0 h-2 bg-blue-500 rounded-t-xl"></div>
             <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
               Starter
             </h3>
             <div className="mb-6">
               <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                {getPlanPrice("starter")}
+                {getPlanPrice("starter", organization, teamSize, billingCycle)}
               </span>
               <span className="text-gray-500 dark:text-gray-400">
                 {getPlanPriceUnit("starter")}
@@ -730,8 +925,8 @@ export default function OrganizationBilling() {
               Perfect for small teams just getting started with automation.
             </p>
             <ul className="space-y-3 mb-8 flex-grow">
-              {getPlanFeatures("starter").map((feature, index) => (
-                <li key={index} className="flex items-start">
+              {getPlanFeatures("starter").map((feature) => (
+                <li key={feature} className="flex items-start">
                   <svg
                     className="h-6 w-6 text-blue-500 mr-2 flex-shrink-0"
                     fill="none"
@@ -754,24 +949,14 @@ export default function OrganizationBilling() {
             </ul>
             <button
               onClick={() => setSelectedPlan("starter")}
-              className={`w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${
-                selectedPlan === "starter"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-blue-600 border border-blue-600 hover:bg-blue-50"
-              }`}
+              className={getPlanButtonClasses("starter", selectedPlan)}
             >
-              {organization.plan === "starter" ? "Current Plan" : "Select Plan"}
+              {getOrgPlanButtonText(organization.plan, "starter")}
             </button>
           </div>
 
           {/* Professional Plan */}
-          <div
-            className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-8 border transition-all hover:shadow-lg relative flex flex-col h-full ${
-              selectedPlan === "professional"
-                ? "border-purple-500 ring-2 ring-purple-500"
-                : "border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600"
-            }`}
-          >
+          <div className={getPlanCardClasses("professional", selectedPlan)}>
             <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-t-xl"></div>
             <div className="absolute -top-3 left-0 right-0 flex justify-center">
               <span className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs font-bold uppercase py-1 px-3 rounded-full">
@@ -783,7 +968,12 @@ export default function OrganizationBilling() {
             </h3>
             <div className="mb-6">
               <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                {getPlanPrice("professional")}
+                {getPlanPrice(
+                  "professional",
+                  organization,
+                  teamSize,
+                  billingCycle
+                )}
               </span>
               <span className="text-gray-500 dark:text-gray-400">
                 {getPlanPriceUnit("professional")}
@@ -794,8 +984,8 @@ export default function OrganizationBilling() {
               customization.
             </p>
             <ul className="space-y-3 mb-8 flex-grow">
-              {getPlanFeatures("professional").map((feature, index) => (
-                <li key={index} className="flex items-start">
+              {getPlanFeatures("professional").map((feature) => (
+                <li key={feature} className="flex items-start">
                   <svg
                     className="h-6 w-6 text-purple-500 mr-2 flex-shrink-0"
                     fill="none"
@@ -818,33 +1008,26 @@ export default function OrganizationBilling() {
             </ul>
             <button
               onClick={() => setSelectedPlan("professional")}
-              className={`w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${
-                selectedPlan === "professional"
-                  ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg"
-                  : "bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg"
-              }`}
+              className={getPlanButtonClasses("professional", selectedPlan)}
             >
-              {organization.plan === "professional"
-                ? "Current Plan"
-                : "Select Plan"}
+              {getOrgPlanButtonText(organization.plan, "professional")}
             </button>
           </div>
 
           {/* Enterprise Plan */}
-          <div
-            className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-8 border transition-all hover:shadow-lg relative flex flex-col h-full ${
-              selectedPlan === "enterprise"
-                ? "border-green-500 ring-2 ring-green-500"
-                : "border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-600"
-            }`}
-          >
+          <div className={getPlanCardClasses("enterprise", selectedPlan)}>
             <div className="absolute top-0 left-0 right-0 h-2 bg-green-500 rounded-t-xl"></div>
             <h3 className="text-xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">
               Enterprise
             </h3>
             <div className="mb-6">
               <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                {getPlanPrice("enterprise")}
+                {getPlanPrice(
+                  "enterprise",
+                  organization,
+                  teamSize,
+                  billingCycle
+                )}
               </span>
               <span className="text-gray-500 dark:text-gray-400">
                 {getPlanPriceUnit("enterprise")}
@@ -855,8 +1038,8 @@ export default function OrganizationBilling() {
               support.
             </p>
             <ul className="space-y-3 mb-8 flex-grow">
-              {getPlanFeatures("enterprise").map((feature, index) => (
-                <li key={index} className="flex items-start">
+              {getPlanFeatures("enterprise").map((feature) => (
+                <li key={feature} className="flex items-start">
                   <svg
                     className="h-6 w-6 text-green-500 mr-2 flex-shrink-0"
                     fill="none"
@@ -879,55 +1062,22 @@ export default function OrganizationBilling() {
             </ul>
             <button
               onClick={() => setSelectedPlan("enterprise")}
-              className={`w-full font-medium py-3 px-6 rounded-full transition-all mt-auto ${
-                selectedPlan === "enterprise"
-                  ? "bg-green-600 text-white"
-                  : "bg-white text-green-600 border border-green-600 hover:bg-green-50"
-              }`}
+              className={getPlanButtonClasses("enterprise", selectedPlan)}
             >
-              {organization.plan === "enterprise"
-                ? "Current Plan"
-                : "Contact Sales"}
+              {getOrgPlanButtonText(organization.plan, "enterprise")}
             </button>
           </div>
         </div>
 
         {/* Update Plan Button */}
-        {selectedPlan !== organization.plan && (
-          <div className="mt-8 p-6 bg-blue-50 dark:bg-blue-900 rounded-lg">
-            <h3 className="text-lg font-semibold mb-2 text-blue-900 dark:text-blue-100">
-              {isDowngrade(organization.plan, selectedPlan)
-                ? "Downgrade to"
-                : "Upgrade to"}{" "}
-              {selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)}{" "}
-              Plan
-            </h3>
-            <p className="text-blue-700 dark:text-blue-200 mb-4">
-              {selectedPlan === "free"
-                ? "You will switch to the free plan with limited features."
-                : selectedPlan === "enterprise"
-                  ? "Contact our sales team for custom enterprise pricing."
-                  : `You will be charged ${getPlanPrice(selectedPlan)} per user/month for ${teamSize} users (${billingCycle} billing).`}
-            </p>
-            <button
-              onClick={handleUpdatePlan}
-              disabled={
-                isUpdating || (selectedPlan === "free" && teamSize > 15)
-              }
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isUpdating
-                ? "Updating..."
-                : `${isDowngrade(organization.plan, selectedPlan) ? "Downgrade to" : "Upgrade to"} ${selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)}`}
-            </button>
-            {selectedPlan === "free" && teamSize > 15 && (
-              <p className="text-red-600 dark:text-red-400 text-sm mt-2">
-                Cannot select free plan with more than 15 users. Please reduce
-                team size to 15 or less.
-              </p>
-            )}
-          </div>
-        )}
+        <UpdatePlanSection
+          selectedPlan={selectedPlan}
+          organization={organization}
+          teamSize={teamSize}
+          billingCycle={billingCycle}
+          isUpdating={isUpdating}
+          handleUpdatePlan={handleUpdatePlan}
+        />
       </div>
     </div>
   );

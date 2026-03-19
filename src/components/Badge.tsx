@@ -28,20 +28,25 @@ export default function Badge({
   variant = "default",
   size = "md",
   className = "",
-}: BadgeProps) {
+}: Readonly<BadgeProps>) {
   /**
    * Generates CSS classes for the badge based on type, value, and size
    * Returns a string combining size, color, and base styling classes
    */
   const getStyles = () => {
     // Size-based styling presets for consistent spacing and typography
-    const baseStyles = {
-      sm: "px-2 py-0.5 text-xs",
-      md: "px-2.5 py-1 text-xs",
-      lg: "px-3 py-1.5 text-sm",
+    const getSizeClass = (s: "sm" | "md" | "lg") => {
+      switch (s) {
+        case "sm":
+          return "px-2 py-0.5 text-xs";
+        case "md":
+          return "px-2.5 py-1 text-xs";
+        case "lg":
+          return "px-3 py-1.5 text-sm";
+      }
     };
 
-    const sizeClass = baseStyles[size];
+    const sizeClass = getSizeClass(size);
     let colorClass = ""; // Will be populated based on type and value combination
 
     // Determine color scheme based on badge type and value
@@ -71,10 +76,6 @@ export default function Badge({
       case "plan":
         // Subscription plan tiers with progressive color scheme
         switch (value.toLowerCase()) {
-          case "free":
-            colorClass =
-              "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200";
-            break;
           case "starter":
             colorClass =
               "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
@@ -108,10 +109,7 @@ export default function Badge({
             colorClass =
               "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
             break;
-          case "viewer":
-            colorClass =
-              "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200";
-            break;
+
           default:
             colorClass =
               "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200";
@@ -374,14 +372,10 @@ export default function Badge({
   const getLabel = () => {
     switch (type) {
       case "priority":
-        // Simple title case for priority levels
-        return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
       case "plan":
       case "role":
-        // Title case for plan and role names
         return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
       case "status":
-        // Convert hyphenated status values to space-separated title case
         return value
           .split("-")
           .map(
@@ -389,7 +383,6 @@ export default function Badge({
           )
           .join(" ");
       default:
-        // Return value as-is for custom types
         return value;
     }
   };

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/useAuth";
@@ -18,12 +18,14 @@ export default function SignupPage() {
       setIsGoogleLoading(true);
       setGoogleError("");
       clearError();
-      const userCredential = await loginWithGoogle();
+      await loginWithGoogle();
 
       // Google users are automatically verified, proceed directly to organizations
       router.push("/organizations");
-    } catch (error: any) {
-      setGoogleError(error.message || "Failed to sign up with Google");
+    } catch (error: unknown) {
+      setGoogleError(
+        error instanceof Error ? error.message : "Failed to sign up with Google"
+      );
     } finally {
       setIsGoogleLoading(false);
     }

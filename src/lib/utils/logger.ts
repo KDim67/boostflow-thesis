@@ -10,7 +10,7 @@ export enum LogLevel {
 export interface LogEntry {
   level: LogLevel;
   message: string;
-  context?: Record<string, any>; // Additional data for debugging
+  context?: Record<string, unknown>;
   timestamp: Date;
   service?: string; // Service name for log identification
 }
@@ -20,56 +20,79 @@ export interface LogEntry {
  * Provides methods for different log levels and automatic timestamping
  */
 export class Logger {
-  private serviceName: string;
+  private readonly serviceName: string;
 
   constructor(serviceName: string) {
     this.serviceName = serviceName;
   }
 
-  debug(message: string, context?: Record<string, any>): void {
+  /**
+   * Converts unknown data to a loggable record
+   * Handles Error objects and null/undefined values
+   */
+  private toLoggable(data: unknown): Record<string, unknown> {
+    if (data === null || data === undefined) {
+      return {};
+    }
+
+    if (data instanceof Error) {
+      return {
+        error: {
+          message: data.message,
+          stack: data.stack,
+          name: data.name,
+        },
+      };
+    }
+
+    if (typeof data === "object") {
+      return data as Record<string, unknown>;
+    }
+
+    return { value: data };
+  }
+
+  debug(message: string, context?: unknown): void {
     this.log(LogLevel.DEBUG, message, context);
   }
 
-  info(message: string, context?: Record<string, any>): void {
+  info(message: string, context?: unknown): void {
     this.log(LogLevel.INFO, message, context);
   }
 
-  warn(message: string, context?: Record<string, any>): void {
+  warn(message: string, context?: unknown): void {
     this.log(LogLevel.WARN, message, context);
   }
 
-  error(message: string, error?: Error, context?: Record<string, any>): void {
-    // Enhance context with error details if Error object is provided
+  error(message: string, error?: Error, context?: unknown): void {
+    // Combine error and additional context
     const errorContext = error
       ? {
-          ...context,
-          error: {
-            message: error.message,
-            stack: error.stack,
-            name: error.name,
-          },
+          ...this.toLoggable(context),
+          ...this.toLoggable(error),
         }
-      : context;
+      : this.toLoggable(context);
 
     this.log(LogLevel.ERROR, message, errorContext);
   }
 
   // Core logging method that formats and outputs log entries
-  private log(
-    level: LogLevel,
-    message: string,
-    context?: Record<string, any>
-  ): void {
+  private log(level: LogLevel, message: string, context?: unknown): void {
     const entry: LogEntry = {
       level,
       message,
-      context,
+      context: this.toLoggable(context),
       timestamp: new Date(),
       service: this.serviceName,
     };
 
     // Route to appropriate console method based on log level
-    const logData = { service: entry.service, msg: message, ...context };
+    const logData = {
+      service: entry.service,
+      msg: message,
+      ...entry.context,
+    };
+
     switch (level) {
       case LogLevel.DEBUG:
         console.debug(logData);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/firebase/useAuth";
 import {
@@ -11,7 +11,6 @@ import {
 import {
   queryDocuments,
   updateDocument,
-  deleteDocument,
 } from "@/lib/firebase/firestoreService";
 import { where } from "firebase/firestore";
 import { Organization, Project } from "@/lib/types/organization";
@@ -34,7 +33,6 @@ import Badge from "@/components/Badge";
 export default function OrganizationProjects() {
   // Extract organization ID from URL parameters
   const { id } = useParams();
-  const router = useRouter();
 
   // Core data state
   const [organization, setOrganization] = useState<Organization | null>(null);
@@ -116,19 +114,19 @@ export default function OrganizationProjects() {
           "admin"
         );
 
-        let projectsData: any[];
+        let projectsData: Project[];
 
         if (isOwnerOrAdmin) {
           // Admins can see all projects in the organization
-          projectsData = await queryDocuments("projects", [
+          projectsData = (await queryDocuments("projects", [
             where("organizationId", "==", organizationId),
-          ]);
+          ])) as Project[];
         } else {
           // Regular users only see projects they're assigned to
           // First, get all projects in the organization
-          const allProjects = await queryDocuments("projects", [
+          const allProjects = (await queryDocuments("projects", [
             where("organizationId", "==", organizationId),
-          ]);
+          ])) as Project[];
 
           // Filter projects based on team membership
           const userProjects = [];
@@ -148,7 +146,7 @@ export default function OrganizationProjects() {
           projectsData = userProjects;
         }
 
-        setProjects(projectsData as Project[]);
+        setProjects(projectsData);
       } catch (error) {
         console.error("Error fetching projects data:", error);
         setError("Failed to load projects data. Please try again.");
@@ -283,7 +281,7 @@ export default function OrganizationProjects() {
    *
    * Sorting:
    * - Orders by creation date (newest first)
-   * - Handles optional createdAt field safely
+   * - Handles optional createdAt field
    */
   const filteredProjects = projects
     .filter((project) => {
@@ -304,7 +302,9 @@ export default function OrganizationProjects() {
     })
     .sort((a, b) => {
       // Sort by creation date (newest first), handle missing timestamps
-      return b.createdAt?.seconds - a.createdAt?.seconds;
+      const timeA = (a.createdAt as { seconds?: number })?.seconds || 0;
+      const timeB = (b.createdAt as { seconds?: number })?.seconds || 0;
+      return timeB - timeA;
     });
 
   if (isLoading) {
@@ -611,10 +611,15 @@ export default function OrganizationProjects() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="project-name-ur5zr"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Project Name
                 </label>
+                \n{" "}
                 <input
+                  id="project-name-ur5zr"
                   type="text"
                   value={editForm.name}
                   onChange={(e) =>
@@ -626,10 +631,15 @@ export default function OrganizationProjects() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="description-sauih"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Description
                 </label>
+                \n{" "}
                 <textarea
+                  id="description-sauih"
                   value={editForm.description}
                   onChange={(e) =>
                     setEditForm((prev) => ({
@@ -644,10 +654,15 @@ export default function OrganizationProjects() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="status-e63mp"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Status
                 </label>
+                \n{" "}
                 <select
+                  id="status-e63mp"
                   value={editForm.status}
                   onChange={(e) =>
                     setEditForm((prev) => ({ ...prev, status: e.target.value }))
@@ -663,10 +678,15 @@ export default function OrganizationProjects() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="start-date-jjh6i"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Start Date
                   </label>
+                  \n{" "}
                   <input
+                    id="start-date-jjh6i"
                     type="date"
                     value={editForm.startDate}
                     onChange={(e) =>
@@ -679,10 +699,15 @@ export default function OrganizationProjects() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="due-date-q5mcn"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Due Date
                   </label>
+                  \n{" "}
                   <input
+                    id="due-date-q5mcn"
                     type="date"
                     value={editForm.dueDate}
                     min={editForm.startDate || undefined}
@@ -699,10 +724,15 @@ export default function OrganizationProjects() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="client-r9ndh"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Client
                   </label>
+                  \n{" "}
                   <input
+                    id="client-r9ndh"
                     type="text"
                     value={editForm.client}
                     onChange={(e) =>
@@ -716,10 +746,15 @@ export default function OrganizationProjects() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor="budget-ubqgr"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                  >
                     Budget
                   </label>
+                  \n{" "}
                   <input
+                    id="budget-ubqgr"
                     type="text"
                     value={editForm.budget}
                     onChange={(e) =>
@@ -735,10 +770,15 @@ export default function OrganizationProjects() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label
+                  htmlFor="progress-editform-progress-fdhwk"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
                   Progress ({editForm.progress}%)
                 </label>
+                \n{" "}
                 <input
+                  id="progress-editform-progress-fdhwk"
                   type="range"
                   min="0"
                   max="100"
@@ -746,7 +786,7 @@ export default function OrganizationProjects() {
                   onChange={(e) =>
                     setEditForm((prev) => ({
                       ...prev,
-                      progress: parseInt(e.target.value),
+                      progress: Number.parseInt(e.target.value),
                     }))
                   }
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"

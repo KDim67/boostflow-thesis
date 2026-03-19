@@ -1,16 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/firebase/useAuth";
 import {
   getOrganization,
-  getOrganizationMembers,
   hasOrganizationPermission,
 } from "@/lib/firebase/organizationService";
-import { getUserProfile, UserProfile } from "@/lib/firebase/userProfileService";
-import { Organization, OrganizationMembership } from "@/lib/types/organization";
+import { Organization } from "@/lib/types/organization";
 import OrganizationProjects from "./projects/page";
 import OrganizationIntegrations from "@/components/dashboard/OrganizationIntegrations";
 import OrganizationMembers from "./members/page";
@@ -28,10 +26,6 @@ export default function OrganizationPage() {
 
   // Core organization data state
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [members, setMembers] = useState<OrganizationMembership[]>([]);
-  const [memberProfiles, setMemberProfiles] = useState<{
-    [key: string]: UserProfile;
-  }>({});
 
   // UI state management
   const [activeTab, setActiveTab] = useState("projects");
@@ -39,12 +33,10 @@ export default function OrganizationPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Permission-based access control flags
-  const [hasPermission, setHasPermission] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const { user } = useAuth();
-  const router = useRouter();
 
   // Handle dynamic route parameter
   const organizationId = Array.isArray(id) ? id[0] : id;
@@ -67,7 +59,6 @@ export default function OrganizationPage() {
           organizationId,
           "viewer"
         );
-        setHasPermission(permission);
 
         const ownerPermission = await hasOrganizationPermission(
           user.uid,
@@ -90,27 +81,8 @@ export default function OrganizationPage() {
           return;
         }
 
-        // Fetch organization details and member data
         const orgData = await getOrganization(organizationId);
         setOrganization(orgData);
-
-        const membersData = await getOrganizationMembers(organizationId);
-        setMembers(membersData);
-
-        // Batch fetch user profiles for all members
-        const profilePromises = membersData.map((member) =>
-          getUserProfile(member.userId)
-        );
-        const profiles = await Promise.all(profilePromises);
-
-        // Create lookup map for efficient profile access by userId
-        const profileMap: { [key: string]: UserProfile } = {};
-        membersData.forEach((member, index) => {
-          if (profiles[index]) {
-            profileMap[member.userId] = profiles[index];
-          }
-        });
-        setMemberProfiles(profileMap);
       } catch (error) {
         console.error("Error fetching organization data:", error);
         setError("Failed to load organization data. Please try again.");
@@ -221,10 +193,7 @@ export default function OrganizationPage() {
       {/* Integrations tab with additional container styling and safety check */}
       {activeTab === "integrations" && organizationId && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-          <OrganizationIntegrations
-            currentUser={user?.uid || ""}
-            organizationId={organizationId}
-          />
+          <OrganizationIntegrations organizationId={organizationId} />
         </div>
       )}
 

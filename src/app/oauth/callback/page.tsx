@@ -8,6 +8,8 @@ import {
   exchangeGitHubCodeForToken,
 } from "@/lib/services/integration/oauthHelpers";
 
+type OAuthStatus = "processing" | "success" | "error";
+
 /**
  * Main OAuth callback handler component that processes the OAuth flow completion
  * Handles token exchange, integration creation, and user redirection
@@ -16,9 +18,7 @@ function OAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Track the current state of the OAuth callback process
-  const [status, setStatus] = useState<"processing" | "success" | "error">(
-    "processing"
-  );
+  const [status, setStatus] = useState<OAuthStatus>("processing");
   // User-facing message describing the current operation
   const [message, setMessage] = useState("Processing OAuth callback...");
 
@@ -83,22 +83,22 @@ function OAuthCallbackContent() {
 
         let tokenData;
         // Construct the redirect URI that matches what was used in the initial OAuth request
-        const redirectUri = `${window.location.origin}/oauth/callback`;
+        const redirectUri = `${globalThis.location.origin}/oauth/callback`;
 
         // Exchange the authorization code for access tokens based on the OAuth provider
         switch (provider) {
           case "google":
             tokenData = await exchangeGoogleCodeForToken(code, {
-              clientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
+              clientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "",
               redirectUri,
-              scopes: [], // Scopes are already defined in the initial authorization request
+              scopes: [],
             });
             break;
           case "github":
             tokenData = await exchangeGitHubCodeForToken(code, {
-              clientId: process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID!,
+              clientId: process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID ?? "",
               redirectUri,
-              scopes: [], // Scopes are already defined in the initial authorization request
+              scopes: [],
             });
             break;
           default:
@@ -108,7 +108,7 @@ function OAuthCallbackContent() {
         setMessage("Creating integration...");
 
         // Configure the integration with default sync settings
-        const integrationConfig: Record<string, any> = {
+        const integrationConfig: Record<string, unknown> = {
           syncInterval: 60, // Sync every 60 minutes
           autoSync: true, // Enable automatic synchronization
         };
@@ -121,7 +121,7 @@ function OAuthCallbackContent() {
         }
 
         // Create the integration record in the system with OAuth credentials
-        const integration = await createIntegration({
+        await createIntegration({
           name: `${provider.charAt(0).toUpperCase() + provider.slice(1)} Integration`,
           description: `Connected ${provider} account`,
           type: "oauth",

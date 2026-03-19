@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 export default function PricingPage() {
   const [teamSize, setTeamSize] = useState(300);
@@ -95,7 +95,7 @@ export default function PricingPage() {
                       max="1000"
                       value={teamSize}
                       onChange={(e) =>
-                        setTeamSize(parseInt(e.target.value) || 1)
+                        setTeamSize(Number.parseInt(e.target.value) || 1)
                       }
                       className="w-16 text-center border-none focus:ring-0 focus:outline-none bg-transparent text-gray-700 dark:text-gray-300"
                     />
@@ -111,7 +111,9 @@ export default function PricingPage() {
                     min="1"
                     max="1000"
                     value={teamSize}
-                    onChange={(e) => setTeamSize(parseInt(e.target.value))}
+                    onChange={(e) =>
+                      setTeamSize(Number.parseInt(e.target.value))
+                    }
                     className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
                   />
                   <div className="relative mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -138,9 +140,9 @@ export default function PricingPage() {
               </div>
 
               <div className="flex flex-col">
-                <label className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <span className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Bill me:
-                </label>
+                </span>
                 <div className="flex items-center gap-4 bg-gray-100 dark:bg-gray-700 p-1 rounded-full">
                   <button
                     onClick={() => setBillingCycle("monthly")}

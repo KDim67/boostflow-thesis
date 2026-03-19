@@ -19,6 +19,9 @@ import { Organization } from "@/lib/types/organization";
 
 import Badge from "@/components/Badge";
 
+type TaskStatus = "pending" | "in-progress" | "completed";
+type TaskPriority = "low" | "medium" | "high";
+
 /**
  * Task interface defining the structure of a project task
  * Contains all necessary fields for task management including status tracking,
@@ -28,8 +31,8 @@ interface Task {
   id: string;
   title: string;
   description: string;
-  status: "pending" | "in-progress" | "completed"; // Task workflow states
-  priority: "low" | "medium" | "high"; // Priority levels for task organization
+  status: TaskStatus; // Task workflow states
+  priority: TaskPriority; // Priority levels for task organization
   dueDate: string;
   projectId?: string; // Optional project association
   assignedTo?: string; // User ID of assignee
@@ -38,8 +41,8 @@ interface Task {
   timeSpent?: number; // Actual time spent on task
   organizationId: string; // Required organization context
   createdBy: string; // User ID of task creator
-  createdAt: any; // Firestore timestamp
-  completedAt?: any; // Completion timestamp for analytics
+  createdAt: unknown; // Firestore timestamp
+  completedAt?: unknown; // Completion timestamp for analytics
 }
 
 /**
@@ -65,7 +68,6 @@ export default function OrganizationProjectsTasks() {
   // Core data state
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
   // UI state management
   const [isLoading, setIsLoading] = useState(true);
@@ -127,12 +129,6 @@ export default function OrganizationProjectsTasks() {
           where("projectId", "==", projectIdString),
         ]);
         setTasks(tasksData as Task[]);
-
-        // Fetch team members for task assignment dropdown
-        const teamMembersData = await queryDocuments("projectMembers", [
-          where("projectId", "==", projectIdString),
-        ]);
-        setTeamMembers(teamMembersData as TeamMember[]);
       } catch (error) {
         console.error("Error fetching tasks data:", error);
         setError("Failed to load tasks data. Please try again.");
@@ -305,7 +301,9 @@ export default function OrganizationProjectsTasks() {
                             task.status === "completed"
                               ? "pending"
                               : "completed";
-                          const updateData: any = { status: newStatus };
+                          const updateData: Record<string, unknown> = {
+                            status: newStatus,
+                          };
 
                           // Set completion timestamp when marking as completed
                           if (newStatus === "completed") {
@@ -337,7 +335,7 @@ export default function OrganizationProjectsTasks() {
                           console.error("Error updating task status:", error);
                         }
                       }}
-                      className={`h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600 ${!canManageTasks ? "opacity-50 cursor-not-allowed" : ""}`}
+                      className={`h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600 ${canManageTasks ? "" : "opacity-50 cursor-not-allowed"}`}
                     />
                   </div>
                   <div className="ml-3 flex-1">
@@ -511,10 +509,7 @@ function TaskModal({
   projectId,
   onTaskCreated,
   onTaskUpdated,
-}: TaskModalProps) {
-  // Early return if required props are missing
-  if (!organizationId || !projectId) return null;
-
+}: Readonly<TaskModalProps>) {
   // Determine if we're editing an existing task or creating a new one
   const isEditing = !!editingTask;
 
@@ -523,7 +518,7 @@ function TaskModal({
   const [description, setDescription] = useState(
     editingTask?.description || ""
   );
-  const [priority, setPriority] = useState<"low" | "medium" | "high">(
+  const [priority, setPriority] = useState<TaskPriority>(
     editingTask?.priority || "medium"
   );
   const [dueDate, setDueDate] = useState(editingTask?.dueDate || "");
@@ -577,7 +572,7 @@ function TaskModal({
 
       if (isEditing && editingTask) {
         // Update existing task
-        const updateData: any = {
+        const updateData: Record<string, unknown> = {
           title,
           description,
           priority,
@@ -648,8 +643,8 @@ function TaskModal({
     }
   };
 
-  // Don't render modal if not open
-  if (!isOpen) return null;
+  // Don't render modal if not open or missing props
+  if (!isOpen || !organizationId || !projectId) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -705,11 +700,7 @@ function TaskModal({
               <select
                 id="task-status"
                 value={status}
-                onChange={(e) =>
-                  setStatus(
-                    e.target.value as "pending" | "in-progress" | "completed"
-                  )
-                }
+                onChange={(e) => setStatus(e.target.value as TaskStatus)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
               >
                 <option value="pending">To Do</option>
@@ -729,9 +720,7 @@ function TaskModal({
             <select
               id="task-priority"
               value={priority}
-              onChange={(e) =>
-                setPriority(e.target.value as "low" | "medium" | "high")
-              }
+              onChange={(e) => setPriority(e.target.value as TaskPriority)}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
             >
               <option value="low">Low</option>
@@ -792,13 +781,11 @@ function TaskModal({
               disabled={isSubmitting}
               className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting
-                ? isEditing
-                  ? "Updating..."
-                  : "Creating..."
-                : isEditing
-                  ? "Update Task"
-                  : "Create Task"}
+              {(() => {
+                if (isSubmitting)
+                  return isEditing ? "Updating..." : "Creating...";
+                return isEditing ? "Update Task" : "Create Task";
+              })()}
             </button>
           </div>
         </form>

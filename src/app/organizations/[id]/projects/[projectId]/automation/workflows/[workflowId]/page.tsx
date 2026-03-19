@@ -31,13 +31,11 @@ export default function WorkflowEditPage() {
   const { user } = useAuth();
 
   // Convert URL parameters to strings (Next.js params can be arrays)
-  const organizationId = Array.isArray(id) ? id[0] : (id as string);
-  const projectIdString = Array.isArray(projectId)
-    ? projectId[0]
-    : (projectId as string);
+  const organizationId = Array.isArray(id) ? id[0] : id;
+  const projectIdString = Array.isArray(projectId) ? projectId[0] : projectId;
   const workflowIdString = Array.isArray(workflowId)
     ? workflowId[0]
-    : (workflowId as string);
+    : workflowId;
 
   // Load organization and project data with permission validation
   useEffect(() => {

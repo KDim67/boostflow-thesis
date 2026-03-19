@@ -66,13 +66,13 @@ const Navbar = () => {
       }
     };
 
-    window.addEventListener(
+    globalThis.addEventListener(
       "profilePictureUpdated",
       handleProfilePictureUpdate as EventListener
     );
 
     return () => {
-      window.removeEventListener(
+      globalThis.removeEventListener(
         "profilePictureUpdated",
         handleProfilePictureUpdate as EventListener
       );
@@ -106,15 +106,15 @@ const Navbar = () => {
   // Track scroll position to apply background blur and shadow effects
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 10) {
+      if (globalThis.scrollY > 10) {
         setIsScrolled(true);
       } else {
         setIsScrolled(false);
       }
     };
 
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    globalThis.addEventListener("scroll", handleScroll);
+    return () => globalThis.removeEventListener("scroll", handleScroll);
   }, []);
 
   return (
@@ -235,7 +235,7 @@ const Navbar = () => {
                         onClick={async () => {
                           await logout();
                           setIsProfileOpen(false);
-                          router.push(`${window.location.origin}/login`);
+                          router.push(`${globalThis.location.origin}/login`);
                         }}
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                       >
@@ -385,7 +385,7 @@ const Navbar = () => {
                     onClick={async () => {
                       await logout();
                       setIsMobileMenuOpen(false);
-                      router.push(`${window.location.origin}/login`);
+                      router.push(`${globalThis.location.origin}/login`);
                     }}
                     className="block w-full text-left px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
                   >

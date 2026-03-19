@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import { useAuth } from "@/lib/firebase/useAuth";
 
 export default function SuspendedPage() {
@@ -10,7 +9,7 @@ export default function SuspendedPage() {
   const handleLogout = async () => {
     try {
       await logout();
-      window.location.href = "/login";
+      globalThis.location.href = "/login";
     } catch (error) {
       console.error("Error logging out:", error);
     }

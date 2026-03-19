@@ -24,16 +24,16 @@ export interface EmailProvider {
 }
 
 // Check if we're running on the server side
-const isServer = typeof window === "undefined";
+const isServer = globalThis.window === undefined;
 
 // MailHog provider for development
 class MailHogProvider implements EmailProvider {
-  private smtpHost: string;
-  private smtpPort: number;
+  private readonly smtpHost: string;
+  private readonly smtpPort: number;
 
   constructor() {
     this.smtpHost = process.env.MAILHOG_HOST || "localhost";
-    this.smtpPort = parseInt(process.env.MAILHOG_PORT || "1025");
+    this.smtpPort = Number.parseInt(process.env.MAILHOG_PORT || "1025");
   }
 
   async sendEmail(
@@ -48,8 +48,12 @@ class MailHogProvider implements EmailProvider {
     }
 
     try {
-      // For MailHog, we'll use nodemailer
-      const nodemailer = await import("nodemailer");
+      // For MailHog, we'll use nodemailer - ONLY on the server
+      const nodemailer =
+        globalThis.window === undefined ? await import("nodemailer") : null;
+      if (!nodemailer) {
+        throw new Error("nodemailer is not available on the client side");
+      }
 
       const transporter = nodemailer.createTransport({
         host: this.smtpHost,
@@ -95,7 +99,7 @@ class MailHogProvider implements EmailProvider {
 
 // SendGrid provider for production
 class SendGridProvider implements EmailProvider {
-  private apiKey: string;
+  private readonly apiKey: string;
 
   constructor() {
     this.apiKey = process.env.SENDGRID_API_KEY || "";
@@ -120,7 +124,11 @@ class SendGridProvider implements EmailProvider {
         throw new Error("SendGrid API key is not configured");
       }
 
-      const sgMail = await import("@sendgrid/mail");
+      const sgMail =
+        globalThis.window === undefined ? await import("@sendgrid/mail") : null;
+      if (!sgMail) {
+        throw new Error("SendGrid is not available on the client side");
+      }
       sgMail.default.setApiKey(this.apiKey);
 
       const msg = {
@@ -143,7 +151,9 @@ class SendGridProvider implements EmailProvider {
         })),
       };
 
-      const result = await sgMail.default.send(msg);
+      const result = await sgMail.default.send(
+        msg as import("@sendgrid/mail").MailDataRequired
+      );
       logger.info("Email sent via SendGrid", {
         to: options.to,
         subject: options.subject,
@@ -165,7 +175,7 @@ class SendGridProvider implements EmailProvider {
 
 // Email service factory
 class EmailService {
-  private provider: EmailProvider | null = null;
+  private readonly provider: EmailProvider | null = null;
 
   constructor() {
     if (!isServer) {
@@ -181,7 +191,11 @@ class EmailService {
     // Priority: 1. Explicit EMAIL_PROVIDER env var, 2. Auto-detect based on NODE_ENV
     let emailProvider = process.env.EMAIL_PROVIDER;
 
-    if (!emailProvider) {
+    if (emailProvider) {
+      logger.info(
+        `Using explicitly configured email provider: ${emailProvider}`
+      );
+    } else {
       // Auto-detect based on environment
       if (environment === "production") {
         emailProvider = "sendgrid";
@@ -192,8 +206,6 @@ class EmailService {
       logger.info(
         `Auto-detected email provider: ${emailProvider} (NODE_ENV: ${environment})`
       );
-    } else {
-      logger.info(`Using explicit email provider: ${emailProvider}`);
     }
 
     switch (emailProvider.toLowerCase()) {

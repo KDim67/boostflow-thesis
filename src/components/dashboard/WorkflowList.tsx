@@ -8,7 +8,7 @@ import {
   deleteWorkflow,
   executeWorkflow,
 } from "@/lib/services/automation/workflowService";
-import { getUserProfile, UserProfile } from "@/lib/firebase/userProfileService";
+import { getUserProfile } from "@/lib/firebase/userProfileService";
 import { Play, Edit, Trash2, Plus, Clock, User, Calendar } from "lucide-react";
 
 /**
@@ -32,7 +32,7 @@ export default function WorkflowList({
   organizationId,
   currentUser,
   onCreateWorkflow,
-}: WorkflowListProps) {
+}: Readonly<WorkflowListProps>) {
   // Core workflow data and UI state
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -70,7 +70,7 @@ export default function WorkflowList({
       const uniqueUserIds = [
         ...new Set(projectWorkflows.map((w) => w.createdBy)),
       ];
-      const userNameMap: Record<string, string> = {};
+      const userNameMap = new Map<string, string>();
 
       // Fetch all user profiles in parallel for better performance
       await Promise.all(
@@ -94,10 +94,13 @@ export default function WorkflowList({
                 displayName = userProfile.lastName;
               }
 
-              userNameMap[userId] = displayName || userProfile.email || userId;
+              userNameMap.set(
+                userId,
+                displayName || userProfile.email || userId
+              );
             } else {
               // Fallback to userId if profile not found
-              userNameMap[userId] = userId;
+              userNameMap.set(userId, userId);
             }
           } catch (error) {
             console.error({
@@ -105,12 +108,12 @@ export default function WorkflowList({
               userId,
               error,
             });
-            userNameMap[userId] = userId;
+            userNameMap.set(userId, userId);
           }
         })
       );
 
-      setUserNames(userNameMap);
+      setUserNames(Object.fromEntries(userNameMap));
     } catch (err) {
       console.error("Error loading workflows:", err);
       setError("Failed to load workflows");

@@ -42,6 +42,7 @@ export default function DemoPage() {
                     width="800"
                     height="450"
                     src={figmaProtoUrl}
+                    title="BoostFlow Figma Prototype"
                     allowFullScreen
                   />
                 </div>

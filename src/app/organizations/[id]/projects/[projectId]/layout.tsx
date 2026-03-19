@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/firebase/useAuth";
 import {
   getOrganization,
   hasOrganizationPermission,
 } from "@/lib/firebase/organizationService";
-import { getDocument } from "@/lib/firebase/firestoreService";
+
 import { Organization } from "@/lib/types/organization";
 
 /**
@@ -25,21 +25,19 @@ import { Organization } from "@/lib/types/organization";
  */
 export default function ProjectLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   // Extract dynamic route parameters from URL
   const { id, projectId } = useParams();
 
   // Component state management
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [projectName, setProjectName] = useState<string>("");
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Authentication and navigation hooks
   const { user } = useAuth();
-  const router = useRouter();
 
   // Normalize route parameters (handle both string and array cases)
   const organizationId = Array.isArray(id) ? id[0] : id;
@@ -71,12 +69,6 @@ export default function ProjectLayout({
         // Fetch organization data after permission validation
         const orgData = await getOrganization(organizationId);
         setOrganization(orgData);
-
-        // Fetch project details for display purposes
-        const projectData = await getDocument("projects", projectIdString);
-        if (projectData) {
-          setProjectName(projectData.name);
-        }
       } catch (error) {
         console.error("Error fetching data:", error);
         setError("Failed to load data. Please try again.");

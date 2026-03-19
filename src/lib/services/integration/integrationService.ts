@@ -8,8 +8,8 @@ export interface Integration {
   description: string;
   type: "api" | "webhook" | "oauth" | "custom";
   provider: string;
-  config: Record<string, any>;
-  credentials: Record<string, any>;
+  config: Record<string, unknown>;
+  credentials: Record<string, unknown>;
   status: "active" | "inactive" | "error";
   createdBy: string;
   createdAt: Date;
@@ -26,7 +26,7 @@ export interface IntegrationEvent {
   id: string;
   integrationId: string;
   eventType: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   status: "pending" | "processed" | "failed";
   timestamp: Date;
   processedAt?: Date;
@@ -52,7 +52,7 @@ export interface DataMapping {
  */
 function getStoredIntegrations(): Integration[] {
   // Server-side rendering safety check
-  if (typeof window === "undefined") return [];
+  if (globalThis.window === undefined) return [];
 
   try {
     const stored = localStorage.getItem("boostflow_integrations");
@@ -70,7 +70,7 @@ function getStoredIntegrations(): Integration[] {
 export const getAllIntegrations = async (): Promise<Integration[]> => {
   try {
     const integrations = getStoredIntegrations();
-    // Convert stored date strings back to Date objects for proper type safety
+    // Convert stored date strings back to Date objects
     return integrations.map((integration) => ({
       ...integration,
       createdAt: new Date(integration.createdAt),
@@ -205,7 +205,7 @@ export const updateIntegration = async (
     const index = integrations.findIndex((i) => i.id === integrationId);
 
     if (index !== -1) {
-      integrations[index] = updatedIntegration;
+      integrations.splice(index, 1, updatedIntegration);
       localStorage.setItem(
         "boostflow_integrations",
         JSON.stringify(integrations)
@@ -302,7 +302,7 @@ async function syncWithGoogleServices(
     throw new Error("Missing Google API access token");
   }
 
-  const scopes = integration.config.scopes || [];
+  const scopes = (integration.config.scopes as string[]) || [];
   let syncedItems = 0;
 
   try {
@@ -317,7 +317,7 @@ async function syncWithGoogleServices(
         "https://www.googleapis.com/calendar/v3/calendars/primary/events",
         {
           headers: {
-            Authorization: `Bearer ${integration.credentials.accessToken}`,
+            Authorization: `Bearer ${integration.credentials.accessToken as string}`,
             "Content-Type": "application/json",
           },
         }
@@ -341,7 +341,7 @@ async function syncWithGoogleServices(
         "https://www.googleapis.com/drive/v3/files?pageSize=100",
         {
           headers: {
-            Authorization: `Bearer ${integration.credentials.accessToken}`,
+            Authorization: `Bearer ${integration.credentials.accessToken as string}`,
             "Content-Type": "application/json",
           },
         }
@@ -366,6 +366,53 @@ async function syncWithGoogleServices(
   }
 }
 
+async function syncGitHubRepositoryData(
+  repo: string,
+  dataTypes: string[],
+  baseUrl: string,
+  headers: Record<string, string>
+): Promise<number> {
+  let syncedItems = 0;
+
+  if (dataTypes.includes("issues")) {
+    console.log(`Syncing issues for ${repo}`);
+    const issuesResponse = await fetch(
+      `${baseUrl}/repos/${repo}/issues?per_page=50&state=all`,
+      { headers }
+    );
+    if (issuesResponse.ok) {
+      const issuesData = await issuesResponse.json();
+      syncedItems += issuesData.length;
+    }
+  }
+
+  if (dataTypes.includes("pull_requests")) {
+    console.log(`Syncing pull requests for ${repo}`);
+    const prsResponse = await fetch(
+      `${baseUrl}/repos/${repo}/pulls?per_page=50&state=all`,
+      { headers }
+    );
+    if (prsResponse.ok) {
+      const prsData = await prsResponse.json();
+      syncedItems += prsData.length;
+    }
+  }
+
+  if (dataTypes.includes("commits")) {
+    console.log(`Syncing commits for ${repo}`);
+    const commitsResponse = await fetch(
+      `${baseUrl}/repos/${repo}/commits?per_page=50`,
+      { headers }
+    );
+    if (commitsResponse.ok) {
+      const commitsData = await commitsResponse.json();
+      syncedItems += commitsData.length;
+    }
+  }
+
+  return syncedItems;
+}
+
 /**
  * Synchronizes data from GitHub repositories including repos, issues, PRs, and commits
  * @param integration - Integration configuration with GitHub credentials and repository settings
@@ -381,8 +428,8 @@ async function syncWithGitHub(
     throw new Error("Missing GitHub API token");
   }
 
-  const repositories = integration.config.repositories || [];
-  const dataTypes = integration.config.dataTypes || [
+  const repositories = (integration.config.repositories as string[]) || [];
+  const dataTypes = (integration.config.dataTypes as string[]) || [
     "repositories",
     "issues",
     "pull_requests",
@@ -393,7 +440,7 @@ async function syncWithGitHub(
   try {
     const baseUrl = "https://api.github.com";
     const headers = {
-      Authorization: `token ${integration.credentials.token}`,
+      Authorization: `token ${integration.credentials.token as string}`,
       Accept: "application/vnd.github.v3+json",
       "User-Agent": "BoostFlow-Integration",
     };
@@ -424,50 +471,12 @@ async function syncWithGitHub(
         dataTypes.includes("commits"))
     ) {
       for (const repo of repositories.slice(0, 5)) {
-        // Sync issues for the repository
-        if (dataTypes.includes("issues")) {
-          console.log(`Syncing issues for ${repo}`);
-
-          const issuesResponse = await fetch(
-            `${baseUrl}/repos/${repo}/issues?per_page=50&state=all`,
-            { headers }
-          );
-
-          if (issuesResponse.ok) {
-            const issuesData = await issuesResponse.json();
-            syncedItems += issuesData.length;
-          }
-        }
-
-        // Sync pull requests for the repository
-        if (dataTypes.includes("pull_requests")) {
-          console.log(`Syncing pull requests for ${repo}`);
-
-          const prsResponse = await fetch(
-            `${baseUrl}/repos/${repo}/pulls?per_page=50&state=all`,
-            { headers }
-          );
-
-          if (prsResponse.ok) {
-            const prsData = await prsResponse.json();
-            syncedItems += prsData.length;
-          }
-        }
-
-        // Sync recent commits for the repository
-        if (dataTypes.includes("commits")) {
-          console.log(`Syncing commits for ${repo}`);
-
-          const commitsResponse = await fetch(
-            `${baseUrl}/repos/${repo}/commits?per_page=50`,
-            { headers }
-          );
-
-          if (commitsResponse.ok) {
-            const commitsData = await commitsResponse.json();
-            syncedItems += commitsData.length;
-          }
-        }
+        syncedItems += await syncGitHubRepositoryData(
+          repo,
+          dataTypes,
+          baseUrl,
+          headers
+        );
       }
     }
 

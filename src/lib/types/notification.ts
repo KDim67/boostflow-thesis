@@ -10,12 +10,12 @@ export interface Notification {
   read: boolean;
   hiddenFromDropdown?: boolean;
   createdAt: Timestamp | FieldValue;
-  updatedAt: any;
+  updatedAt: unknown;
   actionUrl?: string;
   metadata?: {
     organizationId?: string;
     membershipId?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 

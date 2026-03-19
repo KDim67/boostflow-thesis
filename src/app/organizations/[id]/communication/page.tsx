@@ -4,13 +4,15 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/firebase/useAuth";
-import { hasOrganizationPermission } from "@/lib/firebase/organizationService";
+import {
+  hasOrganizationPermission,
+  getOrganizationMembers,
+} from "@/lib/firebase/organizationService";
 import {
   getChannelsByOrganizationForUser,
   createChannel,
   Channel,
 } from "@/lib/services/collaboration/communicationService";
-import { getOrganizationMembers } from "@/lib/firebase/organizationService";
 import { OrganizationMembership } from "@/lib/types/organization";
 import Badge from "@/components/Badge";
 
@@ -52,7 +54,14 @@ export default function CommunicationPage() {
    * @param profile - User profile object containing name and email information
    * @returns Two-character initials or single character, defaults to 'U'
    */
-  const getInitials = (profile: any) => {
+  const getInitials = (
+    profile: {
+      displayName?: string;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+    } | null
+  ) => {
     const displayName =
       profile?.displayName ||
       `${profile?.firstName || ""} ${profile?.lastName || ""}`.trim();
@@ -62,7 +71,7 @@ export default function CommunicationPage() {
       const names = displayName.trim().split(" ");
       // Use first and last name initials if available
       if (names.length >= 2) {
-        return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+        return (names[0][0] + (names.at(-1)?.[0] ?? "")).toUpperCase();
       }
       return displayName[0].toUpperCase();
     }
@@ -128,9 +137,7 @@ export default function CommunicationPage() {
    * Searches across multiple profile fields for comprehensive matching
    */
   useEffect(() => {
-    if (!memberSearchQuery.trim()) {
-      setFilteredMembers(members);
-    } else {
+    if (memberSearchQuery.trim()) {
       const query = memberSearchQuery.toLowerCase();
       const filtered = members.filter((member) => {
         const profile = member.userProfile;
@@ -153,6 +160,8 @@ export default function CommunicationPage() {
         );
       });
       setFilteredMembers(filtered);
+    } else {
+      setFilteredMembers(members);
     }
   }, [memberSearchQuery, members]);
 
@@ -601,23 +610,31 @@ export default function CommunicationPage() {
                           style={{ animationDelay: `${index * 50}ms` }}
                         >
                           <div className="relative">
-                            {profile.profilePicture ? (
-                              <img
-                                src={profile.profilePicture}
-                                alt={displayName}
-                                className="w-10 h-10 rounded-full object-cover ring-2 ring-white dark:ring-gray-800 group-hover:ring-purple-200 dark:group-hover:ring-purple-700 transition-all duration-200"
-                              />
-                            ) : profile.photoURL ? (
-                              <img
-                                src={profile.photoURL}
-                                alt={displayName}
-                                className="w-10 h-10 rounded-full object-cover ring-2 ring-white dark:ring-gray-800 group-hover:ring-purple-200 dark:group-hover:ring-purple-700 transition-all duration-200"
-                              />
-                            ) : (
-                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold ring-2 ring-white dark:ring-gray-800 group-hover:ring-purple-200 dark:group-hover:ring-purple-700 transition-all duration-200">
-                                {getInitials(profile)}
-                              </div>
-                            )}
+                            {(() => {
+                              if (profile.profilePicture) {
+                                return (
+                                  <img
+                                    src={profile.profilePicture}
+                                    alt={displayName}
+                                    className="w-10 h-10 rounded-full object-cover ring-2 ring-white dark:ring-gray-800 group-hover:ring-purple-200 dark:group-hover:ring-purple-700 transition-all duration-200"
+                                  />
+                                );
+                              }
+                              if (profile.photoURL) {
+                                return (
+                                  <img
+                                    src={profile.photoURL}
+                                    alt={displayName}
+                                    className="w-10 h-10 rounded-full object-cover ring-2 ring-white dark:ring-gray-800 group-hover:ring-purple-200 dark:group-hover:ring-purple-700 transition-all duration-200"
+                                  />
+                                );
+                              }
+                              return (
+                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold ring-2 ring-white dark:ring-gray-800 group-hover:ring-purple-200 dark:group-hover:ring-purple-700 transition-all duration-200">
+                                  {getInitials(profile)}
+                                </div>
+                              );
+                            })()}
                             <span
                               className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white dark:border-gray-800 ${
                                 member.status === "active"
@@ -740,7 +757,10 @@ export default function CommunicationPage() {
 
             <div className="p-6 space-y-6">
               <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">
+                <label
+                  htmlFor="channel-name-setnewchannelname-e-target-value-placeholder-general-marketing-development-classname-w-full-pl-8-pr-4-py-3-border-border-gray-300-dark-border-gray-600-rounded-xl-focus-outline-none-focus-ring-2-focus-ring-blue-500-focus-border-transparent-dark-bg-gray-700-dark-text-white-transition-all-duration-200-bg-gray-50-dark-bg-gray-700-50-maxlength-50-channel-names-must-be-lowercase-without-spaces-or-periods-and-less-than-50-characters-description-optional-x6zcy"
+                  className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3"
+                >
                   Channel Name
                 </label>
                 <div className="relative">
@@ -767,7 +787,9 @@ export default function CommunicationPage() {
                   Description{" "}
                   <span className="text-gray-400 font-normal">(Optional)</span>
                 </label>
+                \n{" "}
                 <textarea
+                  id="channel-name-setnewchannelname-e-target-value-placeholder-general-marketing-development-classname-w-full-pl-8-pr-4-py-3-border-border-gray-300-dark-border-gray-600-rounded-xl-focus-outline-none-focus-ring-2-focus-ring-blue-500-focus-border-transparent-dark-bg-gray-700-dark-text-white-transition-all-duration-200-bg-gray-50-dark-bg-gray-700-50-maxlength-50-channel-names-must-be-lowercase-without-spaces-or-periods-and-less-than-50-characters-description-optional-x6zcy"
                   value={newChannelDescription}
                   onChange={(e) => setNewChannelDescription(e.target.value)}
                   placeholder="What's this channel about? What topics will be discussed here?"
@@ -781,12 +803,20 @@ export default function CommunicationPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-4">
+                <label
+                  htmlFor="channel-type-public"
+                  className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-4"
+                >
                   Channel Type
                 </label>
                 <div className="space-y-3">
-                  <label className="flex items-start p-4 border border-gray-200 dark:border-gray-600 rounded-xl cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-200 group">
+                  <label
+                    htmlFor="channel-type-public"
+                    aria-label="Public Channel - Anyone in the organization can find and join this channel"
+                    className="flex items-start p-4 border border-gray-200 dark:border-gray-600 rounded-xl cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-200 group"
+                  >
                     <input
+                      id="channel-type-public"
                       type="radio"
                       value="public"
                       checked={newChannelType === "public"}
@@ -822,8 +852,13 @@ export default function CommunicationPage() {
                       </p>
                     </div>
                   </label>
-                  <label className="flex items-start p-4 border border-gray-200 dark:border-gray-600 rounded-xl cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all duration-200 group">
+                  <label
+                    htmlFor="channel-type-private"
+                    aria-label="Private Channel - Only invited members can access this channel"
+                    className="flex items-start p-4 border border-gray-200 dark:border-gray-600 rounded-xl cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all duration-200 group"
+                  >
                     <input
+                      id="channel-type-private"
                       type="radio"
                       value="private"
                       checked={newChannelType === "private"}

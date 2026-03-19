@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { auth } from "@/lib/firebase/config";
 import { useAuth } from "@/lib/firebase/useAuth";
 import { syncUserProfile } from "@/lib/firebase/userProfileService";
 
@@ -22,8 +21,7 @@ export default function SignupForm() {
   const [errorMessage, setErrorMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
-  const { signup, loginWithGoogle, sendEmailVerification, error, clearError } =
-    useAuth();
+  const { signup, error, clearError } = useAuth();
   const router = useRouter();
 
   // Sync authentication errors from useAuth hook to local error state
@@ -69,7 +67,7 @@ export default function SignupForm() {
       const displayName = `${firstName} ${lastName}`.trim();
       const userCredential = await signup(email, password, displayName);
 
-      // Safety check: ensure user object exists after creation
+      // Ensure user object exists after creation
       if (!userCredential.user) {
         throw new Error("User creation succeeded but user is not available");
       }
@@ -79,13 +77,15 @@ export default function SignupForm() {
         firstName,
         lastName,
         createdAt: new Date(),
-      } as any);
+      } as Record<string, unknown>);
 
       // Redirect to organizations page
       router.push("/organizations");
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Display user-friendly error message
-      setErrorMessage(error.message || "Failed to create account");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to create account"
+      );
     } finally {
       // Always reset loading state regardless of success/failure
       setIsLoading(false);

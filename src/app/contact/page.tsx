@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { GoogleMap, LoadScript, Marker } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, Marker } from "@react-google-maps/api";
 
 const mapContainerStyle = {
   width: "100%",
@@ -16,12 +15,10 @@ const center = {
 };
 
 export default function ContactPage() {
-  const [mapApiKey, setMapApiKey] = useState("");
-
-  useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
-    setMapApiKey(apiKey);
-  }, []);
+  const { isLoaded } = useJsApiLoader({
+    id: "google-map-script",
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
+  });
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -287,7 +284,7 @@ export default function ContactPage() {
                 <h3 className="text-lg font-semibold mb-4">Follow Us</h3>
                 <div className="flex space-x-4">
                   <a
-                    href="#"
+                    href="https://twitter.com/boostflow"
                     className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/30 transition-colors"
                   >
                     <svg
@@ -304,7 +301,7 @@ export default function ContactPage() {
                     </svg>
                   </a>
                   <a
-                    href="#"
+                    href="https://github.com/boostflow"
                     className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/30 transition-colors"
                   >
                     <svg
@@ -317,7 +314,7 @@ export default function ContactPage() {
                     </svg>
                   </a>
                   <a
-                    href="#"
+                    href="https://linkedin.com/company/boostflow"
                     className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/30 transition-colors"
                   >
                     <svg
@@ -334,7 +331,7 @@ export default function ContactPage() {
                     </svg>
                   </a>
                   <a
-                    href="#"
+                    href="https://facebook.com/boostflow"
                     className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/30 transition-colors"
                   >
                     <svg
@@ -361,17 +358,19 @@ export default function ContactPage() {
       <section className="py-12 bg-gray-50 dark:bg-gray-800">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto">
-            <div className="bg-gray-200 dark:bg-gray-700 rounded-xl h-80">
-              {mapApiKey && (
-                <LoadScript googleMapsApiKey={mapApiKey}>
-                  <GoogleMap
-                    mapContainerStyle={mapContainerStyle}
-                    center={center}
-                    zoom={15}
-                  >
-                    <Marker position={center} />
-                  </GoogleMap>
-                </LoadScript>
+            <div className="bg-gray-200 dark:bg-gray-700 rounded-xl h-80 overflow-hidden">
+              {isLoaded ? (
+                <GoogleMap
+                  mapContainerStyle={mapContainerStyle}
+                  center={center}
+                  zoom={15}
+                >
+                  <Marker position={center} />
+                </GoogleMap>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-500">
+                  Loading Map...
+                </div>
               )}
             </div>
           </div>

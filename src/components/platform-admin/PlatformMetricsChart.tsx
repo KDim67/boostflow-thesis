@@ -82,7 +82,7 @@ const PlatformMetricsChart = () => {
         const querySnapshot = await getDocs(usersQuery);
 
         // Object to store user counts by month-year key
-        const usersByMonth: Record<string, number> = {};
+        const usersByMonth = new Map<string, number>();
         const monthNames = [
           "Jan",
           "Feb",
@@ -106,7 +106,7 @@ const PlatformMetricsChart = () => {
           const date = new Date();
           date.setMonth(currentDate.getMonth() - (7 - i)); // Calculate month going backwards
           const monthKey = `${monthNames[date.getMonth()]}-${date.getFullYear()}`;
-          usersByMonth[monthKey] = 0; // Initialize with zero users
+          usersByMonth.set(monthKey, 0); // Initialize with zero users
 
           monthsData.push({
             key: monthKey,
@@ -126,7 +126,7 @@ const PlatformMetricsChart = () => {
             // Create month-year key for grouping users
             const monthKey = `${monthNames[createdAt.getMonth()]}-${createdAt.getFullYear()}`;
             // Increment user count for this month (fallback to 0 if key doesn't exist)
-            usersByMonth[monthKey] = (usersByMonth[monthKey] || 0) + 1;
+            usersByMonth.set(monthKey, (usersByMonth.get(monthKey) || 0) + 1);
             totalUserCount++;
           }
         });
@@ -134,12 +134,12 @@ const PlatformMetricsChart = () => {
         // Transform data into chart-friendly format (month name only, no year)
         const chartData: MonthlyData[] = monthsData.map((monthData) => ({
           month: monthData.key.split("-")[0], // Extract month abbreviation
-          users: usersByMonth[monthData.key],
+          users: usersByMonth.get(monthData.key) || 0,
         }));
 
         // Calculate month-over-month growth rate
-        const lastMonthUsers = chartData[chartData.length - 1]?.users || 0;
-        const previousMonthUsers = chartData[chartData.length - 2]?.users || 0;
+        const lastMonthUsers = chartData.at(-1)?.users ?? 0;
+        const previousMonthUsers = chartData.at(-2)?.users ?? 0;
 
         let calculatedGrowthRate = 0;
         if (previousMonthUsers > 0) {
@@ -147,16 +147,13 @@ const PlatformMetricsChart = () => {
           calculatedGrowthRate =
             ((lastMonthUsers - previousMonthUsers) / previousMonthUsers) * 100;
         } else if (previousMonthUsers === 0 && lastMonthUsers > 0) {
-          // Edge case: first users registered (100% growth)
+          // First users registered (100% growth)
           calculatedGrowthRate = 100;
-        } else {
-          // No growth or no users in either month
-          calculatedGrowthRate = 0;
         }
 
         setMonthlyData(chartData);
         setTotalUsers(totalUserCount);
-        setGrowthRate(parseFloat(calculatedGrowthRate.toFixed(1)));
+        setGrowthRate(Number.parseFloat(calculatedGrowthRate.toFixed(1)));
       } catch (error) {
         console.error("Error fetching user growth data:", error);
       } finally {
@@ -279,56 +276,69 @@ const PlatformMetricsChart = () => {
               </span>
             </div>
             <div className="flex items-center">
-              {growthRate > 0 ? (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-3 w-3 text-green-500 dark:text-green-400 mr-1"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 10l7-7m0 0l7 7m-7-7v18"
-                  />
-                </svg>
-              ) : growthRate < 0 ? (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-3 w-3 text-red-500 dark:text-red-400 mr-1"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 14l-7 7m0 0l-7-7m7 7V3"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-3 w-3 text-gray-500 dark:text-gray-400 mr-1"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 12h14"
-                  />
-                </svg>
-              )}
+              {(() => {
+                if (growthRate > 0) {
+                  return (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-3 w-3 text-green-500 dark:text-green-400 mr-1"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 10l7-7m0 0l7 7m-7-7v18"
+                      />
+                    </svg>
+                  );
+                }
+                if (growthRate < 0) {
+                  return (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-3 w-3 text-red-500 dark:text-red-400 mr-1"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                      />
+                    </svg>
+                  );
+                }
+                return (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-3 w-3 text-gray-500 dark:text-gray-400 mr-1"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 12h14"
+                    />
+                  </svg>
+                );
+              })()}
               <span className="text-gray-700 dark:text-gray-300 font-medium">
                 Growth Rate:{" "}
                 <span
-                  className={`${growthRate > 0 ? "text-green-600 dark:text-green-400" : growthRate < 0 ? "text-red-600 dark:text-red-400" : "text-gray-600 dark:text-gray-400"}`}
+                  className={(() => {
+                    if (growthRate > 0)
+                      return "text-green-600 dark:text-green-400";
+                    if (growthRate < 0) return "text-red-600 dark:text-red-400";
+                    return "text-gray-600 dark:text-gray-400";
+                  })()}
                 >{`${growthRate > 0 ? "+" : ""}${growthRate}%`}</span>
               </span>
             </div>

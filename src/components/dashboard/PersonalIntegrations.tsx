@@ -7,7 +7,6 @@ import {
   updateIntegration,
   syncIntegration,
   getAvailableProviders,
-  createIntegration,
   getAllIntegrations,
   deleteIntegration,
 } from "@/lib/services/integration/integrationService";
@@ -29,7 +28,7 @@ interface PersonalIntegrationsProps {
  */
 export default function PersonalIntegrations({
   currentUser,
-}: PersonalIntegrationsProps) {
+}: Readonly<PersonalIntegrationsProps>) {
   const [integration, setIntegration] = useState<Integration | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [availableProviders, setAvailableProviders] = useState<
@@ -99,9 +98,7 @@ export default function PersonalIntegrations({
       }
 
       // Generate random state for CSRF protection
-      const state =
-        Math.random().toString(36).substring(2, 15) +
-        Math.random().toString(36).substring(2, 15);
+      const state = crypto.randomUUID().replaceAll("-", "");
 
       // Store OAuth context in localStorage for callback handling
       localStorage.setItem("oauth_provider", provider);
@@ -111,8 +108,8 @@ export default function PersonalIntegrations({
 
       const oauthConfig: OAuthConfig = {
         clientId,
-        redirectUri: `${window.location.origin}/oauth/callback`,
-        scopes: getProviderScopes(provider as any),
+        redirectUri: `${globalThis.location.origin}/oauth/callback`,
+        scopes: getProviderScopes(provider),
       };
 
       // Generate provider-specific OAuth URL
@@ -128,7 +125,7 @@ export default function PersonalIntegrations({
       }
 
       // Redirect to provider's OAuth page
-      window.location.href = authUrl;
+      globalThis.location.href = authUrl;
     } catch (err) {
       console.error("OAuth connection error:", err);
       setError(`Failed to connect to ${provider}. Please try again.`);
@@ -433,10 +430,15 @@ export default function PersonalIntegrations({
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="integration-name-6x6xv"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Integration Name
               </label>
+              \n{" "}
               <input
+                id="integration-name-6x6xv"
                 type="text"
                 value={integration.name}
                 disabled
@@ -445,10 +447,15 @@ export default function PersonalIntegrations({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="provider-vx01g"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Provider
               </label>
+              \n{" "}
               <input
+                id="provider-vx01g"
                 type="text"
                 value={integration.provider}
                 disabled
@@ -457,10 +464,15 @@ export default function PersonalIntegrations({
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="description-mwple"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Description
               </label>
+              \n{" "}
               <textarea
+                id="description-mwple"
                 value={integration.description}
                 disabled
                 className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-3 py-2 text-sm disabled:opacity-75"
@@ -469,10 +481,15 @@ export default function PersonalIntegrations({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="integration-type-2lr6p"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Integration Type
               </label>
+              \n{" "}
               <input
+                id="integration-type-2lr6p"
                 type="text"
                 value={integration.type}
                 disabled
@@ -481,10 +498,15 @@ export default function PersonalIntegrations({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="status-eep8y"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Status
               </label>
+              \n{" "}
               <input
+                id="status-eep8y"
                 type="text"
                 value={integration.status}
                 disabled
@@ -517,13 +539,13 @@ export default function PersonalIntegrations({
           </div>
 
           <div className="space-y-4">
-            {Object.entries(integration.credentials).map(([key, value]) => (
+            {Object.entries(integration.credentials).map(([key]) => (
               <div key={key} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 capitalize">
                     {key
-                      .replace(/([A-Z])/g, " $1")
-                      .replace(/_/g, " ")
+                      .replaceAll(/([A-Z])/g, " $1")
+                      .replaceAll("_", " ")
                       .trim()}
                   </label>
                 </div>

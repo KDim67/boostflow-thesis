@@ -395,7 +395,12 @@ const CareersPage = () => {
             </Link>
             <p className="mt-4 text-sm text-blue-100">
               Send your resume to{" "}
-              <a className="text-white hover:underline">career email here</a>
+              <a
+                href="mailto:careers@boostflow.me"
+                className="text-white hover:underline"
+              >
+                careers@boostflow.me
+              </a>
             </p>
           </div>
         </div>

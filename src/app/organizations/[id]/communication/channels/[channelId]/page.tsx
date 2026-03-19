@@ -19,8 +19,8 @@ import {
   deleteChannel,
   Channel,
   Message,
+  ChannelMember,
 } from "@/lib/services/collaboration/communicationService";
-import { formatDistanceToNow } from "date-fns";
 
 /**
  * ChannelPage Component - Real-time chat interface for organization channels
@@ -32,6 +32,186 @@ import { formatDistanceToNow } from "date-fns";
  * - Permission-based access control
  * - Responsive UI with typing indicators and scroll management
  */
+/**
+ * Generates user initials for avatar display when profile picture is unavailable
+ * Priority: displayName (first + last initial) > displayName (first initial) > email (first char) > 'U'
+ *
+ * @param user - User object with displayName and/or email
+ * @returns String of 1-2 uppercase characters
+ */
+const getInitials = (user: { displayName?: string; email?: string } | null) => {
+  const displayName = user?.displayName;
+  const email = user?.email;
+
+  if (displayName) {
+    const names = displayName.trim().split(" ");
+    // Use first and last name initials if available
+    if (names.length >= 2) {
+      return (names[0][0] + (names.at(-1)?.[0] ?? "")).toUpperCase();
+    }
+    return displayName[0].toUpperCase();
+  }
+
+  if (email) {
+    return email[0].toUpperCase();
+  }
+
+  // Fallback for users with no displayName or email
+  return "U";
+};
+
+/**
+ * Formats message timestamps based on age
+ * - < 24 hours: Time only (e.g., "2:30 PM")
+ * - < 7 days: Weekday + time (e.g., "Mon 2:30 PM")
+ * - > 7 days: Date + time (e.g., "Jan 15 2:30 PM")
+ *
+ * @param date - Message creation date
+ * @returns Formatted time string
+ */
+const formatMessageTime = (date: Date) => {
+  const now = new Date();
+  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+
+  if (diffInHours < 24) {
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } else if (diffInHours < 168) {
+    // 7 days
+    return date.toLocaleDateString([], {
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } else {
+    return date.toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+};
+
+const MessageBubble = ({
+  message,
+  index,
+  messages,
+  user,
+  userProfiles,
+  currentUserProfile,
+}: Readonly<{
+  message: Message;
+  index: number;
+  messages: Message[];
+  user: any;
+  userProfiles: Record<string, any>;
+  currentUserProfile: any;
+}>) => {
+  const showAvatar =
+    index === 0 || messages[index - 1].author !== message.author;
+  const isCurrentUser = message.author === user?.uid;
+
+  const authorProfile = userProfiles[message.author];
+  const displayName = isCurrentUser
+    ? user?.displayName || user?.email || "You"
+    : authorProfile?.displayName || message.authorName || "Unknown User";
+
+  const currentUserPicture =
+    currentUserProfile?.profilePicture || currentUserProfile?.photoURL;
+  const authorPicture =
+    authorProfile?.profilePicture || authorProfile?.photoURL;
+  const hasProfilePicture = isCurrentUser ? currentUserPicture : authorPicture;
+  const profilePictureUrl = isCurrentUser ? currentUserPicture : authorPicture;
+  const initialsProfile = isCurrentUser ? currentUserProfile : authorProfile;
+
+  const renderAvatar = () => {
+    if (hasProfilePicture) {
+      return (
+        <img
+          src={profilePictureUrl}
+          alt={displayName}
+          className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-gray-800 shadow-sm object-cover"
+        />
+      );
+    }
+    return (
+      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center ring-2 ring-white dark:ring-gray-800">
+        <span className="text-white font-semibold text-sm">
+          {getInitials(initialsProfile)}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div
+      key={message.id}
+      className={`flex items-start group ${showAvatar ? "mt-6" : "mt-1"} ${
+        isCurrentUser
+          ? "flex-row-reverse space-x-reverse space-x-3"
+          : "space-x-3"
+      } hover:bg-gray-50/50 dark:hover:bg-gray-800/50 rounded-full p-3 -mx-3 transition-all duration-200 hover:scale-[1.01]`}
+    >
+      {showAvatar ? (
+        <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0">
+          {renderAvatar()}
+        </div>
+      ) : (
+        <div className="w-10 h-10 flex-shrink-0" />
+      )}
+
+      <div
+        className={`flex-1 min-w-0 ${isCurrentUser ? "flex flex-col items-end" : ""}`}
+      >
+        {showAvatar && (
+          <div
+            className={`flex items-center space-x-2 mb-2 ${
+              isCurrentUser ? "flex-row-reverse space-x-reverse" : ""
+            }`}
+          >
+            <span className="font-semibold text-gray-900 dark:text-white">
+              {isCurrentUser ? "You" : displayName}
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
+              {formatMessageTime(new Date(message.createdAt))}
+            </span>
+          </div>
+        )}
+
+        <div
+          className={`group/message relative inline-block px-4 py-3 rounded-full max-w-xs lg:max-w-md whitespace-pre-wrap break-words shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-[1.02] ${
+            isCurrentUser
+              ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white"
+              : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 backdrop-blur-sm"
+          }`}
+        >
+          {message.content}
+
+          {/* Message status indicator for sent messages */}
+          {isCurrentUser && (
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
+              <svg
+                className="w-2.5 h-2.5 text-white"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function ChannelPage() {
   // Extract URL parameters for organization and channel identification
   const { id, channelId } = useParams();
@@ -45,11 +225,23 @@ export default function ChannelPage() {
   // Core channel data state
   const [channel, setChannel] = useState<Channel | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [members, setMembers] = useState<any[]>([]);
+  const [members, setMembers] = useState<ChannelMember[]>([]);
 
   // User profile caching for message display optimization
-  const [userProfiles, setUserProfiles] = useState<{ [key: string]: any }>({});
-  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
+  const [userProfiles, setUserProfiles] = useState<{
+    [key: string]: {
+      displayName?: string;
+      email?: string;
+      photoURL?: string;
+      profilePicture?: string;
+    } | null;
+  }>({});
+  const [currentUserProfile, setCurrentUserProfile] = useState<{
+    displayName?: string;
+    email?: string;
+    photoURL?: string;
+    profilePicture?: string;
+  } | null>(null);
 
   // UI state management
   const [isLoading, setIsLoading] = useState(true);
@@ -61,7 +253,19 @@ export default function ChannelPage() {
 
   // Modal and user management state (for private channels)
   const [showAddUserModal, setShowAddUserModal] = useState(false);
-  const [organizationMembers, setOrganizationMembers] = useState<any[]>([]);
+  const [organizationMembers, setOrganizationMembers] = useState<
+    {
+      userId: string;
+      status: string;
+      role?: string;
+      userProfile?: {
+        displayName?: string;
+        email?: string;
+        profilePicture?: string;
+        photoURL?: string;
+      };
+    }[]
+  >([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddingUser, setIsAddingUser] = useState(false);
 
@@ -94,34 +298,6 @@ export default function ChannelPage() {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     setShowScrollToBottom(false);
-  };
-
-  /**
-   * Generates user initials for avatar display when profile picture is unavailable
-   * Priority: displayName (first + last initial) > displayName (first initial) > email (first char) > 'U'
-   *
-   * @param user - User object with displayName and/or email
-   * @returns String of 1-2 uppercase characters
-   */
-  const getInitials = (user: any) => {
-    const displayName = user?.displayName;
-    const email = user?.email;
-
-    if (displayName) {
-      const names = displayName.trim().split(" ");
-      // Use first and last name initials if available
-      if (names.length >= 2) {
-        return (names[0][0] + names[names.length - 1][0]).toUpperCase();
-      }
-      return displayName[0].toUpperCase();
-    }
-
-    if (email) {
-      return email[0].toUpperCase();
-    }
-
-    // Fallback for users with no displayName or email
-    return "U";
   };
 
   /**
@@ -490,41 +666,6 @@ export default function ChannelPage() {
         .includes(searchQuery.toLowerCase())
   );
 
-  /**
-   * Formats message timestamps based on age
-   * - < 24 hours: Time only (e.g., "2:30 PM")
-   * - < 7 days: Weekday + time (e.g., "Mon 2:30 PM")
-   * - > 7 days: Date + time (e.g., "Jan 15 2:30 PM")
-   *
-   * @param date - Message creation date
-   * @returns Formatted time string
-   */
-  const formatMessageTime = (date: Date) => {
-    const now = new Date();
-    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-
-    if (diffInHours < 24) {
-      return date.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } else if (diffInHours < 168) {
-      // 7 days
-      return date.toLocaleDateString([], {
-        weekday: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } else {
-      return date.toLocaleDateString([], {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex justify-center items-center">
@@ -838,114 +979,17 @@ export default function ChannelPage() {
             </p>
           </div>
         ) : (
-          messages.map((message, index) => {
-            const showAvatar =
-              index === 0 || messages[index - 1].author !== message.author;
-            const isCurrentUser = message.author === user?.uid;
-            const showTimestamp =
-              showAvatar ||
-              (index > 0 &&
-                new Date(message.createdAt).getTime() -
-                  new Date(messages[index - 1].createdAt).getTime() >
-                  300000); // 5 minutes
-
-            const authorProfile = userProfiles[message.author];
-            const displayName = isCurrentUser
-              ? user?.displayName || user?.email || "You"
-              : authorProfile?.displayName ||
-                message.authorName ||
-                "Unknown User";
-
-            return (
-              <div
-                key={message.id}
-                className={`flex items-start group ${showAvatar ? "mt-6" : "mt-1"} ${
-                  isCurrentUser
-                    ? "flex-row-reverse space-x-reverse space-x-3"
-                    : "space-x-3"
-                } hover:bg-gray-50/50 dark:hover:bg-gray-800/50 rounded-full p-3 -mx-3 transition-all duration-200 hover:scale-[1.01]`}
-              >
-                {showAvatar ? (
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0">
-                    {(isCurrentUser &&
-                      (currentUserProfile?.profilePicture ||
-                        currentUserProfile?.photoURL)) ||
-                    (!isCurrentUser &&
-                      (authorProfile?.profilePicture ||
-                        authorProfile?.photoURL)) ? (
-                      <img
-                        src={
-                          isCurrentUser
-                            ? currentUserProfile?.profilePicture ||
-                              currentUserProfile?.photoURL
-                            : authorProfile?.profilePicture ||
-                              authorProfile?.photoURL
-                        }
-                        alt={displayName}
-                        className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-gray-800 shadow-sm object-cover"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center ring-2 ring-white dark:ring-gray-800">
-                        <span className="text-white font-semibold text-sm">
-                          {getInitials(
-                            isCurrentUser ? currentUserProfile : authorProfile
-                          )}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="w-10 h-10 flex-shrink-0" />
-                )}
-
-                <div
-                  className={`flex-1 min-w-0 ${isCurrentUser ? "flex flex-col items-end" : ""}`}
-                >
-                  {showAvatar && (
-                    <div
-                      className={`flex items-center space-x-2 mb-2 ${
-                        isCurrentUser ? "flex-row-reverse space-x-reverse" : ""
-                      }`}
-                    >
-                      <span className="font-semibold text-gray-900 dark:text-white">
-                        {isCurrentUser ? "You" : displayName}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
-                        {formatMessageTime(new Date(message.createdAt))}
-                      </span>
-                    </div>
-                  )}
-
-                  <div
-                    className={`group/message relative inline-block px-4 py-3 rounded-full max-w-xs lg:max-w-md whitespace-pre-wrap break-words shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-[1.02] ${
-                      isCurrentUser
-                        ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white"
-                        : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 backdrop-blur-sm"
-                    }`}
-                  >
-                    {message.content}
-
-                    {/* Message status indicator for sent messages */}
-                    {isCurrentUser && (
-                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-2.5 h-2.5 text-white"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })
+          messages.map((message, index) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              index={index}
+              messages={messages}
+              user={user}
+              userProfiles={userProfiles}
+              currentUserProfile={currentUserProfile}
+            />
+          ))
         )}
         <div ref={messagesEndRef} />
 
@@ -1001,7 +1045,7 @@ export default function ChannelPage() {
                 ref={textareaRef}
                 value={newMessage}
                 onChange={handleTextareaChange}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyPress}
                 placeholder={`Message #${channel.name}...`}
                 className="w-full px-4 py-3 pr-20 border border-gray-300 dark:border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white resize-none shadow-sm transition-all duration-200 hover:shadow-md"
                 style={{ minHeight: "48px", maxHeight: "120px" }}
@@ -1130,31 +1174,39 @@ export default function ChannelPage() {
                     >
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0">
-                          {member.userProfile?.profilePicture ? (
-                            <img
-                              src={member.userProfile.profilePicture}
-                              alt={
-                                member.userProfile.displayName ||
-                                member.userProfile.email
-                              }
-                              className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-gray-800 shadow-sm object-cover"
-                            />
-                          ) : member.userProfile?.photoURL ? (
-                            <img
-                              src={member.userProfile.photoURL}
-                              alt={
-                                member.userProfile.displayName ||
-                                member.userProfile.email
-                              }
-                              className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-gray-800 shadow-sm object-cover"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                              <span className="text-white font-semibold text-sm">
-                                {getInitials(member.userProfile)}
-                              </span>
-                            </div>
-                          )}
+                          {(() => {
+                            if (member.userProfile?.profilePicture) {
+                              return (
+                                <img
+                                  src={member.userProfile.profilePicture}
+                                  alt={
+                                    member.userProfile.displayName ||
+                                    member.userProfile.email
+                                  }
+                                  className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-gray-800 shadow-sm object-cover"
+                                />
+                              );
+                            }
+                            if (member.userProfile?.photoURL) {
+                              return (
+                                <img
+                                  src={member.userProfile.photoURL}
+                                  alt={
+                                    member.userProfile.displayName ||
+                                    member.userProfile.email
+                                  }
+                                  className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-gray-800 shadow-sm object-cover"
+                                />
+                              );
+                            }
+                            return (
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                                <span className="text-white font-semibold text-sm">
+                                  {getInitials(member.userProfile)}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div>
                           <p className="font-medium text-gray-900 dark:text-white">
@@ -1214,10 +1266,15 @@ export default function ChannelPage() {
 
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label
+                  htmlFor="channel-name-jx94f"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                >
                   Channel Name
                 </label>
+                \n{" "}
                 <input
+                  id="channel-name-jx94f"
                   type="text"
                   value={editChannelName}
                   onChange={(e) => setEditChannelName(e.target.value)}
@@ -1227,10 +1284,15 @@ export default function ChannelPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label
+                  htmlFor="description-optional-9ffoa"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                >
                   Description (Optional)
                 </label>
+                \n{" "}
                 <textarea
+                  id="description-optional-9ffoa"
                   value={editChannelDescription}
                   onChange={(e) => setEditChannelDescription(e.target.value)}
                   rows={3}

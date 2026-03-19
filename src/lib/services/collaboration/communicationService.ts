@@ -52,7 +52,7 @@ export interface Attachment {
   name: string; // Display name for the attachment
   size?: number; // File size in bytes (for files)
   thumbnailUrl?: string; // Preview image URL (for images/videos)
-  metadata?: Record<string, any>; // Additional type-specific data
+  metadata?: Record<string, unknown>; // Additional type-specific data
 }
 
 /**
@@ -200,7 +200,9 @@ export const getChannelsByOrganization = async (
     );
 
     const querySnapshot = await getDocs(q);
-    const channels: any[] = [];
+    const channels: Array<
+      { id: string } & import("firebase/firestore").DocumentData
+    > = [];
     querySnapshot.forEach((doc) => {
       channels.push({ id: doc.id, ...doc.data() });
     });
@@ -280,7 +282,9 @@ export const getOrCreateDirectMessageChannel = async (
   try {
     // Create deterministic conversation ID by sorting user IDs
     // This ensures the same channel is used regardless of parameter order
-    const conversationId = [userId1, userId2].sort().join("_");
+    const conversationId = [userId1, userId2]
+      .sort((a, b) => a.localeCompare(b))
+      .join("_");
 
     // Check if a DM channel already exists between these users
     const existingChannel = await getChannel(conversationId);
@@ -322,6 +326,85 @@ export const getOrCreateDirectMessageChannel = async (
 };
 
 /**
+ * Helper to process notifications for direct messages securely in the background
+ */
+const handleDirectMessageNotification = async (
+  message: Omit<
+    Message,
+    "id" | "createdAt" | "updatedAt" | "isEdited" | "isPinned"
+  >,
+  messageId: string
+): Promise<void> => {
+  try {
+    const channel = await getChannel(message.channelId);
+    // Only create notifications for direct messages (private channels with 2 members)
+    if (channel?.type !== "private" || channel.memberIds.length !== 2) {
+      return;
+    }
+
+    const recipientId = channel.memberIds.find((id) => id !== message.author);
+
+    if (!recipientId) return;
+
+    // Dynamic imports to avoid circular dependencies
+    const { NotificationService } =
+      await import("@/lib/firebase/notificationService");
+    const { getUserProfile } =
+      await import("@/lib/firebase/userProfileService");
+
+    const senderProfile = await getUserProfile(message.author);
+    const senderName =
+      senderProfile?.displayName || message.authorName || "Someone";
+
+    // Check for existing unread DM notification from this sender
+    const existingNotifications =
+      await NotificationService.getUserNotifications(
+        recipientId,
+        50,
+        true,
+        true
+      );
+    const existingDMNotification = existingNotifications.find(
+      (n) =>
+        n.type === "direct_message" &&
+        n.metadata?.senderId === message.author &&
+        !n.read
+    );
+
+    const messagePreview =
+      message.content.length > 50
+        ? message.content.substring(0, 50) + "..."
+        : message.content;
+
+    // Update existing notification or create new one to avoid spam
+    if (existingDMNotification) {
+      await NotificationService.updateNotification(existingDMNotification.id, {
+        message: `${senderName}: ${messagePreview}`,
+        updatedAt: new Date(),
+      });
+    } else {
+      await NotificationService.createNotification(
+        recipientId,
+        `New message from ${senderName}`,
+        `${senderName}: ${messagePreview}`,
+        "direct_message",
+        channel.organizationId,
+        `/organizations/${channel.organizationId}/communication/direct/${message.author}`,
+        {
+          senderId: message.author,
+          channelId: message.channelId,
+          messageId: messageId,
+        }
+      );
+    }
+  } catch (notificationError) {
+    logger.warn("Could not create direct message notification", {
+      error: (notificationError as Error).message,
+    });
+  }
+};
+
+/**
  * Sends a new message to a channel and handles related side effects
  * Automatically updates channel activity, manages notifications for DMs, and sets default message properties
  *
@@ -358,74 +441,7 @@ export const sendMessage = async (
     }
 
     // Handle direct message notifications (non-critical operation)
-    try {
-      const channel = await getChannel(message.channelId);
-      // Only create notifications for direct messages (private channels with 2 members)
-      if (
-        channel &&
-        channel.type === "private" &&
-        channel.memberIds.length === 2
-      ) {
-        const recipientId = channel.memberIds.find(
-          (id) => id !== message.author
-        );
-        if (recipientId) {
-          // Dynamic imports to avoid circular dependencies
-          const { NotificationService } =
-            await import("@/lib/firebase/notificationService");
-          const { getUserProfile } =
-            await import("@/lib/firebase/userProfileService");
-
-          const senderProfile = await getUserProfile(message.author);
-          const senderName =
-            senderProfile?.displayName || message.authorName || "Someone";
-
-          // Check for existing unread DM notification from this sender
-          const existingNotifications =
-            await NotificationService.getUserNotifications(
-              recipientId,
-              50,
-              true,
-              true
-            );
-          const existingDMNotification = existingNotifications.find(
-            (n) =>
-              n.type === "direct_message" &&
-              n.metadata?.senderId === message.author &&
-              !n.read
-          );
-
-          // Update existing notification or create new one to avoid spam
-          if (existingDMNotification) {
-            await NotificationService.updateNotification(
-              existingDMNotification.id,
-              {
-                message: `${senderName}: ${message.content.length > 50 ? message.content.substring(0, 50) + "..." : message.content}`,
-                updatedAt: new Date(),
-              }
-            );
-          } else {
-            await NotificationService.createNotification(
-              recipientId,
-              `New message from ${senderName}`,
-              `${senderName}: ${message.content.length > 50 ? message.content.substring(0, 50) + "..." : message.content}`,
-              "direct_message",
-              channel.organizationId,
-              `/organizations/${channel.organizationId}/communication/direct/${message.author}`,
-              {
-                senderId: message.author,
-                channelId: message.channelId,
-                messageId: messageId,
-              }
-            );
-          }
-        }
-      }
-    } catch (notificationError) {
-      logger.warn("Could not create direct message notification", {
-        error: (notificationError as Error).message,
-      });
-    }
+    await handleDirectMessageNotification(message, messageId);
 
     // Retrieve the created message with server-generated timestamps
     const createdMessage = await getDocument(COLLECTIONS.MESSAGES, messageId);
@@ -488,13 +504,14 @@ export const getChannelMessages = async (
     }
 
     // Order by creation time (newest first) and apply limit
-    constraints.push(orderBy("createdAt", "desc"));
-    constraints.push(limitQuery(limit));
+    constraints.push(orderBy("createdAt", "desc"), limitQuery(limit));
 
     const q = query(collectionRef, ...constraints);
     const querySnapshot = await getDocs(q);
 
-    const messages: any[] = [];
+    const messages: Array<
+      { id: string } & import("firebase/firestore").DocumentData
+    > = [];
     querySnapshot.forEach((doc) => {
       messages.push({ id: doc.id, ...doc.data() });
     });
@@ -735,7 +752,9 @@ const getChannelMemberIds = async (channelId: string): Promise<string[]> => {
     const q = query(collectionRef, where("channelId", "==", channelId));
     const querySnapshot = await getDocs(q);
 
-    const members: any[] = [];
+    const members: Array<
+      { id: string } & import("firebase/firestore").DocumentData
+    > = [];
     querySnapshot.forEach((doc) => {
       members.push({ id: doc.id, ...doc.data() });
     });
@@ -765,19 +784,24 @@ export const getChannelMembers = async (
     const q = query(collectionRef, where("channelId", "==", channelId));
     const querySnapshot = await getDocs(q);
 
-    const members: any[] = [];
+    const members: Array<
+      { id: string } & import("firebase/firestore").DocumentData
+    > = [];
     querySnapshot.forEach((doc) => {
       members.push({ id: doc.id, ...doc.data() });
     });
 
     // Convert Firestore timestamps to JavaScript Date objects
-    return members.map((member) => ({
-      ...member,
-      joinedAt: timestampToDate(member.joinedAt) || new Date(),
-      lastReadAt: member.lastReadAt
-        ? timestampToDate(member.lastReadAt) || undefined
-        : undefined,
-    })) as ChannelMember[];
+    return members.map((member) => {
+      const typedMember = member as unknown as ChannelMember;
+      return {
+        ...typedMember,
+        joinedAt: timestampToDate(member.joinedAt) || new Date(),
+        lastReadAt: member.lastReadAt
+          ? timestampToDate(member.lastReadAt) || undefined
+          : undefined,
+      };
+    }) as ChannelMember[];
   } catch (error) {
     logger.error("Error fetching channel members", error as Error, {
       channelId,

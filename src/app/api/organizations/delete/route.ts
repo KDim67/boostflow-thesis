@@ -4,22 +4,12 @@ import {
   deleteOrganization,
   getOrganization,
 } from "@/lib/firebase/organizationService";
-import { getAuth } from "firebase-admin/auth";
-import { adminApp } from "@/lib/firebase/admin";
-
-const auth = getAuth(adminApp);
+import { requireBearerToken } from "@/lib/api/authHelper";
 
 export async function DELETE(request: NextRequest) {
   try {
-    // Get the authorization header
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = authHeader.split("Bearer ")[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const userId = decodedToken.uid;
+    const authResult = await requireBearerToken(request);
+    if (authResult instanceof NextResponse) return authResult;
 
     // Get organization ID from request body
     const { organizationId } = await request.json();

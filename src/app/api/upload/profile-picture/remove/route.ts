@@ -13,7 +13,7 @@ export async function DELETE(request: NextRequest) {
   try {
     // Get the authorization header
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

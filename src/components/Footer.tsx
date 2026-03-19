@@ -18,7 +18,7 @@ const Footer = () => {
             </p>
             <div className="flex space-x-4">
               <a
-                href="#"
+                href="https://twitter.com/boostflow"
                 className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
               >
                 <svg
@@ -35,7 +35,7 @@ const Footer = () => {
                 </svg>
               </a>
               <a
-                href="#"
+                href="https://github.com/boostflow"
                 className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
               >
                 <svg
@@ -48,7 +48,7 @@ const Footer = () => {
                 </svg>
               </a>
               <a
-                href="#"
+                href="https://linkedin.com/company/boostflow"
                 className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
               >
                 <svg

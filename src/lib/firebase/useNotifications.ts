@@ -140,7 +140,7 @@ export const useNotifications = (includeHidden: boolean = false) => {
       type: NotificationType,
       organizationId?: string,
       actionUrl?: string,
-      metadata?: { [key: string]: any }
+      metadata?: { [key: string]: unknown }
     ) => {
       if (!user?.uid) return;
 

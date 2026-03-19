@@ -9,25 +9,16 @@ import {
   updateOrganization,
   hasOrganizationPermission,
 } from "@/lib/firebase/organizationService";
-import { getAuth } from "firebase-admin/auth";
-import { adminApp } from "@/lib/firebase/admin";
-
-const auth = getAuth(adminApp);
+import { requireBearerToken } from "@/lib/api/authHelper";
+import { validateImageFile, fileToBuffer } from "@/lib/api/uploadHelper";
 
 export async function POST(request: NextRequest) {
   try {
-    // Initialize buckets if they don't exist
     await initializeBuckets();
 
-    // Get the authorization header
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = authHeader.split("Bearer ")[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const userId = decodedToken.uid;
+    const authResult = await requireBearerToken(request);
+    if (authResult instanceof NextResponse) return authResult;
+    const { uid: userId } = authResult;
 
     // Parse the form data
     const formData = await request.formData();
@@ -58,30 +49,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file type
-    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json(
-        {
-          error:
-            "Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.",
-        },
-        { status: 400 }
-      );
-    }
+    const validationError = validateImageFile(file);
+    if (validationError) return validationError;
 
-    // Validate file size (5MB limit)
-    const maxSize = 5 * 1024 * 1024; // 5MB
-    if (file.size > maxSize) {
-      return NextResponse.json(
-        { error: "File too large. Maximum size is 5MB." },
-        { status: 400 }
-      );
-    }
-
-    // Convert file to buffer
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const buffer = await fileToBuffer(file);
 
     // Generate consistent filename for organization logos
     const fileName = generateFileName(

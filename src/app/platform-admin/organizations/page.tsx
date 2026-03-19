@@ -3,14 +3,12 @@
 // React component for platform administrators to manage organizations
 // Provides functionality for viewing, filtering, suspending, and deleting organizations
 import React, { useEffect, useState } from "react";
-import { Metadata } from "next";
 import { useRouter } from "next/navigation";
 import {
   getAllOrganizations,
   updateOrganization,
 } from "@/lib/firebase/organizationService";
 import { Organization, SubscriptionPlan } from "@/lib/types/organization";
-import { timestampToDate } from "@/lib/firebase/firestoreService";
 import { auth } from "@/lib/firebase/config";
 import { usePlatformAuth } from "@/lib/firebase/usePlatformAuth";
 
@@ -160,11 +158,21 @@ export default function OrganizationManagementPage() {
    * Format Firestore timestamp or Date object for display
    * Handles both Firestore Timestamp objects and regular Date objects
    */
-  const formatDate = (timestamp: any) => {
+  const formatDate = (timestamp: unknown) => {
     if (!timestamp) return "N/A";
 
     // Handle Firestore Timestamp objects vs regular Date objects
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    let date: Date;
+    if (
+      timestamp &&
+      typeof timestamp === "object" &&
+      "toDate" in timestamp &&
+      typeof (timestamp as { toDate: () => Date }).toDate === "function"
+    ) {
+      date = (timestamp as { toDate: () => Date }).toDate();
+    } else {
+      date = new Date(timestamp as string | number | Date);
+    }
     return date.toLocaleDateString();
   };
 
@@ -331,10 +339,14 @@ export default function OrganizationManagementPage() {
         <div className="p-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="search-orgs"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Search
               </label>
               <input
+                id="search-orgs"
                 type="text"
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                 placeholder="Search by name"
@@ -343,10 +355,14 @@ export default function OrganizationManagementPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="plan-filter"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Plan
               </label>
               <select
+                id="plan-filter"
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                 value={planFilter}
                 onChange={(e) => setPlanFilter(e.target.value)}
@@ -359,10 +375,14 @@ export default function OrganizationManagementPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="status-filter"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Status
               </label>
               <select
+                id="status-filter"
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -410,10 +430,14 @@ export default function OrganizationManagementPage() {
             Organizations
           </h2>
           <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label
+              htmlFor="page-size"
+              className="text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
               Show:
             </label>
             <select
+              id="page-size"
               className="border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-sm"
               value={pageSize}
               onChange={(e) => handlePageSizeChange(Number(e.target.value))}
@@ -428,141 +452,147 @@ export default function OrganizationManagementPage() {
             </span>
           </div>
         </div>
-        {loading ? (
-          <div className="p-8 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            <p className="mt-2 text-gray-500 dark:text-gray-400">
-              Loading organizations...
-            </p>
-          </div>
-        ) : error ? (
-          <div className="p-8 text-center text-red-500 dark:text-red-400">
-            <p>{error}</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-900/50">
-                <tr>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                  >
-                    Organization
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                  >
-                    Plan
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                  >
-                    Users
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                  >
-                    Status
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                  >
-                    Created
-                  </th>
+        {(() => {
+          if (loading) {
+            return (
+              <div className="p-8 text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                <p className="mt-2 text-gray-500 dark:text-gray-400">
+                  Loading organizations...
+                </p>
+              </div>
+            );
+          }
+          if (error) {
+            return (
+              <div className="p-8 text-center text-red-500 dark:text-red-400">
+                <p>{error}</p>
+              </div>
+            );
+          }
+          return (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-900/50">
+                  <tr>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                    >
+                      Organization
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                    >
+                      Plan
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                    >
+                      Users
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                    >
+                      Status
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                    >
+                      Created
+                    </th>
 
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                  >
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {paginatedOrganizations.length > 0 ? (
-                  paginatedOrganizations.map((org) => (
-                    <tr key={org.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500 dark:text-indigo-400 font-bold">
-                            {org.name.charAt(0)}
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              {org.name}
+                    <th
+                      scope="col"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                    >
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {paginatedOrganizations.length > 0 ? (
+                    paginatedOrganizations.map((org) => (
+                      <tr key={org.id}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500 dark:text-indigo-400 font-bold">
+                              {org.name.charAt(0)}
+                            </div>
+                            <div className="ml-4">
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                {org.name}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {org.plan.charAt(0).toUpperCase() + org.plan.slice(1)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {org.memberCount || 0}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <Badge
-                          type="status"
-                          value={
-                            org.suspended
-                              ? "suspended"
-                              : org.onTrial
-                                ? "pending"
-                                : "active"
-                          }
-                          size="sm"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {formatDate(org.createdAt)}
-                      </td>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {org.plan.charAt(0).toUpperCase() + org.plan.slice(1)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {org.memberCount || 0}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <Badge
+                            type="status"
+                            value={(() => {
+                              if (org.suspended) return "suspended";
+                              if (org.onTrial) return "pending";
+                              return "active";
+                            })()}
+                            size="sm"
+                          />
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {formatDate(org.createdAt)}
+                        </td>
 
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => {
-                            setSelectedOrganization(org);
-                            setIsManageModalOpen(true);
-                          }}
-                          className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 mr-3"
-                        >
-                          Manage
-                        </button>
-                        <button
-                          onClick={() => handleSuspendOrganization(org)}
-                          className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-900 dark:hover:text-yellow-300 mr-3"
-                        >
-                          {org.suspended ? "Unsuspend" : "Suspend"}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteOrganization(org)}
-                          className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
-                        >
-                          Remove
-                        </button>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <button
+                            onClick={() => {
+                              setSelectedOrganization(org);
+                              setIsManageModalOpen(true);
+                            }}
+                            className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 mr-3"
+                          >
+                            Manage
+                          </button>
+                          <button
+                            onClick={() => handleSuspendOrganization(org)}
+                            className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-900 dark:hover:text-yellow-300 mr-3"
+                          >
+                            {org.suspended ? "Unsuspend" : "Suspend"}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteOrganization(org)}
+                            className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-6 py-4 text-center text-gray-500 dark:text-gray-400"
+                      >
+                        {filteredOrganizations.length === 0
+                          ? "No organizations found"
+                          : "No organizations on this page"}
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-6 py-4 text-center text-gray-500 dark:text-gray-400"
-                    >
-                      {filteredOrganizations.length === 0
-                        ? "No organizations found"
-                        : "No organizations on this page"}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  )}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
 
         {/* Pagination */}
         <div className="bg-white dark:bg-gray-800 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6">
@@ -648,17 +678,17 @@ export default function OrganizationManagementPage() {
               <strong>{selectedOrganization.name}</strong>
             </p>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Current Plan
-              </label>
+              </span>
               <p className="text-lg font-semibold text-indigo-600 dark:text-indigo-400 capitalize">
                 {selectedOrganization.plan}
               </p>
             </div>
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Select New Plan
-              </label>
+              </span>
               <div className="space-y-2">
                 {(
                   [

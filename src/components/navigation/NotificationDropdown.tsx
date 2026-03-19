@@ -53,55 +53,6 @@ const NotificationDropdown = () => {
   };
 
   /**
-   * Handles organization invitation accept/decline actions
-   * Makes API call to process invitation and redirects user appropriately
-   * Falls back to invitation page if API call fails
-   */
-  const handleInvitationAction = async (
-    notification: Notification,
-    action: "accept" | "decline"
-  ) => {
-    if (notification.metadata?.membershipId) {
-      try {
-        const response = await fetch(
-          `/api/invitations/${notification.metadata.membershipId}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              action,
-              userId: notification.userId,
-            }),
-          }
-        );
-
-        const result = await response.json();
-
-        if (result.success) {
-          await markAsRead(notification.id);
-
-          // Redirect to specific URL or default to organizations page
-          if (result.redirectUrl) {
-            window.location.href = result.redirectUrl;
-          } else {
-            window.location.href = "/organizations";
-          }
-        } else {
-          console.error("Failed to process invitation:", result.message);
-          // Fallback to invitation page for manual handling
-          window.location.href = `/invitation/${notification.metadata.membershipId}`;
-        }
-      } catch (error) {
-        console.error("Error processing invitation:", error);
-        // Fallback to invitation page for manual handling
-        window.location.href = `/invitation/${notification.metadata.membershipId}`;
-      }
-    }
-  };
-
-  /**
    * Returns appropriate SVG icon based on notification type
    * Each notification type has a distinct icon and color scheme
    */
@@ -186,11 +137,15 @@ const NotificationDropdown = () => {
    * Handles both Firestore timestamps and regular Date objects
    * Returns empty string if timestamp is invalid or missing
    */
-  const formatNotificationTime = (timestamp: any) => {
+  const formatNotificationTime = (timestamp: unknown) => {
     if (!timestamp) return "";
     try {
       // Handle Firestore timestamp objects or regular Date objects
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      const ts = timestamp as { toDate?: () => Date };
+      const date =
+        typeof ts.toDate === "function"
+          ? ts.toDate()
+          : new Date(timestamp as string | number | Date);
       return formatDistanceToNow(date, { addSuffix: true });
     } catch {
       return "";
@@ -238,103 +193,118 @@ const NotificationDropdown = () => {
 
           {/* Scrollable notification list with loading, error, and empty states */}
           <div className="max-h-96 overflow-y-auto">
-            {isLoading ? (
-              <div className="p-4 text-center">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto"></div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                  Loading notifications...
-                </p>
-              </div>
-            ) : error ? (
-              <div className="p-4 text-center">
-                <p className="text-sm text-red-500">{error}</p>
-              </div>
-            ) : notifications.length === 0 ? (
-              <div className="p-4 text-center">
-                <svg
-                  className="w-12 h-12 text-gray-400 mx-auto mb-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                  />
-                </svg>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  No notifications yet
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                {notifications.slice(0, 5).map((notification) => (
-                  <div
-                    key={notification.id}
-                    className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
-                      !notification.read ? "bg-blue-50 dark:bg-blue-900/20" : ""
-                    }`}
-                  >
-                    <div className="flex items-start space-x-3">
-                      <div className="flex-shrink-0 mt-1">
-                        {getNotificationIcon(notification.type)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                            {notification.title}
-                          </p>
-                          <div className="flex items-center space-x-2">
-                            {!notification.read && (
-                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                            )}
-                            <button
-                              onClick={() => hideFromDropdown(notification.id)}
-                              className="text-gray-400 hover:text-red-500 transition-colors"
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
-                            </button>
-                          </div>
+            {(() => {
+              if (isLoading) {
+                return (
+                  <div className="p-4 text-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto"></div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                      Loading notifications...
+                    </p>
+                  </div>
+                );
+              }
+              if (error) {
+                return (
+                  <div className="p-4 text-center">
+                    <p className="text-sm text-red-500">{error}</p>
+                  </div>
+                );
+              }
+              if (notifications.length === 0) {
+                return (
+                  <div className="p-4 text-center">
+                    <svg
+                      className="w-12 h-12 text-gray-400 mx-auto mb-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                      />
+                    </svg>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      No notifications yet
+                    </p>
+                  </div>
+                );
+              }
+              return (
+                <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {notifications.slice(0, 5).map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                        notification.read
+                          ? ""
+                          : "bg-blue-50 dark:bg-blue-900/20"
+                      }`}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 mt-1">
+                          {getNotificationIcon(notification.type)}
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                          {notification.message}
-                        </p>
-                        <div className="flex items-center justify-between mt-2">
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {formatNotificationTime(notification.createdAt)}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                              {notification.title}
+                            </p>
+                            <div className="flex items-center space-x-2">
+                              {!notification.read && (
+                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                              )}
+                              <button
+                                onClick={() =>
+                                  hideFromDropdown(notification.id)
+                                }
+                                className="text-gray-400 hover:text-red-500 transition-colors"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M6 18L18 6M6 6l12 12"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                            {notification.message}
                           </p>
-                          {notification.actionUrl ? (
-                            <Link
-                              href={notification.actionUrl}
-                              onClick={() =>
-                                handleNotificationClick(notification)
-                              }
-                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                            >
-                              View
-                            </Link>
-                          ) : null}
+                          <div className="flex items-center justify-between mt-2">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {formatNotificationTime(notification.createdAt)}
+                            </p>
+                            {notification.actionUrl ? (
+                              <Link
+                                href={notification.actionUrl}
+                                onClick={() =>
+                                  handleNotificationClick(notification)
+                                }
+                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                              >
+                                View
+                              </Link>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="p-4 border-t border-gray-200 dark:border-gray-700">

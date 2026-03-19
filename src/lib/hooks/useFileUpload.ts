@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/firebase/useAuth";
  * Provides callback functions for handling upload lifecycle events
  */
 interface UploadOptions {
-  onSuccess?: (result: any) => void;
+  onSuccess?: (result: { url: string; document: unknown }) => void;
   onError?: (error: string) => void;
   onProgress?: (progress: number) => void;
 }

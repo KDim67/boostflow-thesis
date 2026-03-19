@@ -5,7 +5,6 @@ import {
   getRecentActivityLogs,
   ActivityLogEntry,
 } from "@/lib/services/platform/platformService";
-import { useRouter } from "next/navigation";
 
 /**
  * Formats a timestamp into a human-readable relative time string
@@ -25,11 +24,11 @@ const formatTimestamp = (date: Date): string => {
   if (diffSecs < 60) {
     return "just now";
   } else if (diffMins < 60) {
-    return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+    return `${diffMins} minute${diffMins === 1 ? "" : "s"} ago`;
   } else if (diffHours < 24) {
-    return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+    return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
   } else if (diffDays < 7) {
-    return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+    return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
   } else {
     // For activities older than a week, show the actual date
     return date.toLocaleDateString();
@@ -41,13 +40,20 @@ const formatTimestamp = (date: Date): string => {
  * @param limit - Maximum number of activity logs to display (default: 5)
  */
 const RecentActivityLog = ({ limit = 5 }: { limit?: number }) => {
-  const router = useRouter();
   // State for storing fetched activity log entries
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   // CSV-formatted data for potential export functionality
-  const [csvData, setCsvData] = useState<any[]>([]);
+  const [csvData, setCsvData] = useState<
+    {
+      Action: string;
+      Description: string;
+      Actor: string;
+      Time: string;
+      Severity: string;
+    }[]
+  >([]);
 
   // Fetch activity logs when component mounts or limit changes
   useEffect(() => {
@@ -120,22 +126,6 @@ const RecentActivityLog = ({ limit = 5 }: { limit?: number }) => {
           </svg>
         );
       case "normal":
-        return (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-3 w-3 mr-1"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        );
       case "low":
         return (
           <svg
@@ -158,13 +148,24 @@ const RecentActivityLog = ({ limit = 5 }: { limit?: number }) => {
     }
   };
 
+  const getSeverityColors = (severity: string) => {
+    switch (severity) {
+      case "high":
+        return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+      case "normal":
+        return "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400";
+      default:
+        return "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400";
+    }
+  };
+
   return (
     <div className="overflow-x-auto">
       {error && (
         <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-md">
           {error}
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => globalThis.location.reload()}
             className="ml-2 underline"
           >
             Retry
@@ -172,147 +173,24 @@ const RecentActivityLog = ({ limit = 5 }: { limit?: number }) => {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="flex justify-center items-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-          <span className="ml-2 text-gray-600 dark:text-gray-400">
-            Loading activity logs...
-          </span>
-        </div>
-      ) : activityLogs.length === 0 ? (
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-12 w-12 mx-auto mb-3 text-gray-400 dark:text-gray-600"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1}
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-            />
-          </svg>
-          <p>No activity logs found</p>
-        </div>
-      ) : (
-        <>
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-800/50">
-              <tr>
-                <th
-                  scope="col"
-                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                >
-                  Action
-                </th>
-                <th
-                  scope="col"
-                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                >
-                  Description
-                </th>
-                <th
-                  scope="col"
-                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                >
-                  Actor
-                </th>
-                <th
-                  scope="col"
-                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                >
-                  Time
-                </th>
-                <th
-                  scope="col"
-                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                >
-                  Severity
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-transparent divide-y divide-gray-200 dark:divide-gray-700">
-              {activityLogs.map((log) => (
-                <tr
-                  key={log.id}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                >
-                  <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                    {log.action}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {log.description}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {log.actor}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {formatTimestamp(log.timestamp)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm">
-                    <span
-                      className={`px-2 py-0.5 inline-flex items-center text-xs leading-5 font-medium rounded-full ${
-                        log.severity === "high"
-                          ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                          : log.severity === "normal"
-                            ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                            : "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
-                      }`}
-                    >
-                      {getSeverityIcon(log.severity)}
-                      {getSeverityLabel(log.severity)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {(() => {
+        if (isLoading) {
+          return (
+            <div className="flex justify-center items-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+              <span className="ml-2 text-gray-600 dark:text-gray-400">
+                Loading activity logs...
+              </span>
+            </div>
+          );
+        }
 
-          <div className="mt-4 flex justify-between">
-            <button
-              onClick={() => {
-                const headers = [
-                  "Action",
-                  "Description",
-                  "Actor",
-                  "Time",
-                  "Severity",
-                ];
-                const csvContent = [
-                  headers.join(","),
-                  ...csvData.map((row) =>
-                    [
-                      `"${row.Action}"`,
-                      `"${row.Description.replace(/"/g, '""')}"`,
-                      `"${row.Actor}"`,
-                      `"${row.Time}"`,
-                      `"${row.Severity}"`,
-                    ].join(",")
-                  ),
-                ].join("\n");
-
-                const blob = new Blob([csvContent], {
-                  type: "text/csv;charset=utf-8;",
-                });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement("a");
-                link.setAttribute("href", url);
-                link.setAttribute(
-                  "download",
-                  `platform-activity-log-${new Date().toISOString().split("T")[0]}.csv`
-                );
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              }}
-              className="text-indigo-600 hover:text-indigo-900 text-sm font-medium flex items-center"
-            >
+        if (activityLogs.length === 0) {
+          return (
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 mr-1"
+                className="h-12 w-12 mx-auto mb-3 text-gray-400 dark:text-gray-600"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -320,15 +198,142 @@ const RecentActivityLog = ({ limit = 5 }: { limit?: number }) => {
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  strokeWidth={1}
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
                 />
               </svg>
-              Export Log
-            </button>
-          </div>
-        </>
-      )}
+              <p>No activity logs found</p>
+            </div>
+          );
+        }
+
+        return (
+          <>
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-800/50">
+                <tr>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                  >
+                    Action
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                  >
+                    Description
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                  >
+                    Actor
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                  >
+                    Time
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                  >
+                    Severity
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-transparent divide-y divide-gray-200 dark:divide-gray-700">
+                {activityLogs.map((log) => (
+                  <tr
+                    key={log.id}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                      {log.action}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      {log.description}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      {log.actor}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      {formatTimestamp(log.timestamp)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm">
+                      <span
+                        className={`px-2 py-0.5 inline-flex items-center text-xs leading-5 font-medium rounded-full ${getSeverityColors(log.severity)}`}
+                      >
+                        {getSeverityIcon(log.severity)}
+                        {getSeverityLabel(log.severity)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="mt-4 flex justify-between">
+              <button
+                onClick={() => {
+                  const headers = [
+                    "Action",
+                    "Description",
+                    "Actor",
+                    "Time",
+                    "Severity",
+                  ];
+                  const csvContent = [
+                    headers.join(","),
+                    ...csvData.map((row) =>
+                      [
+                        `"${row.Action}"`,
+                        `"${row.Description.replaceAll('"', '""')}"`,
+                        `"${row.Actor}"`,
+                        `"${row.Time}"`,
+                        `"${row.Severity}"`,
+                      ].join(",")
+                    ),
+                  ].join("\n");
+
+                  const blob = new Blob([csvContent], {
+                    type: "text/csv;charset=utf-8;",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement("a");
+                  link.setAttribute("href", url);
+                  link.setAttribute(
+                    "download",
+                    `platform-activity-log-${new Date().toISOString().split("T")[0]}.csv`
+                  );
+                  document.body.appendChild(link);
+                  link.click();
+                  link.remove();
+                }}
+                className="text-indigo-600 hover:text-indigo-900 text-sm font-medium flex items-center"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
+                Export Log
+              </button>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 };

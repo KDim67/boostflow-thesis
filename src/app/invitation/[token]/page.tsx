@@ -113,10 +113,11 @@ export default function InvitationPage() {
           organizationName: result.organizationName || prev?.organizationName,
         }));
       }
-    } catch (error: any) {
-      console.error("Error processing invitation:", error);
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      console.error("Error processing invitation:", err);
       setError(
-        error.message || "Failed to process invitation. Please try again."
+        err.message || "Failed to process invitation. Please try again."
       );
     } finally {
       setIsProcessing(false);
@@ -134,9 +135,8 @@ export default function InvitationPage() {
 
   // Redirect unauthenticated users to login with return URL to this invitation page
   if (!user) {
-    router.push(
-      `/login?redirect=${encodeURIComponent(`/invitation/${invitationToken}`)}`
-    );
+    const redirectPath = encodeURIComponent("/invitation/" + invitationToken);
+    router.push("/login?redirect=" + redirectPath);
     return null;
   }
 

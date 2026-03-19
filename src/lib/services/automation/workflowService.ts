@@ -1,3 +1,62 @@
+import { Task } from "@/lib/types/task";
+
+/**
+ * Common task-related data used in workflow steps
+ */
+export interface WorkflowTaskData {
+  taskId?: string;
+  title?: string;
+  description?: string;
+  assignee?: string;
+  assignedBy?: string;
+  dueDate?: string;
+  priority?: string;
+  status?: string;
+  projectId?: string;
+  organizationId?: string;
+}
+
+/**
+ * Configuration for workflow trigger steps
+ */
+export interface TriggerConfig {
+  triggerType: "manual" | "scheduled" | "event";
+  schedule?: string; // cron expression for scheduled triggers
+  eventSource?: string; // identifier for event-based triggers
+}
+
+/**
+ * Configuration for workflow condition steps
+ */
+export interface ConditionConfig {
+  conditionType:
+    | "task.status.equals"
+    | "task.priority.equals"
+    | "task.assignee.equals"
+    | "task.assignee.empty"
+    | "task.duedate.overdue"
+    | "task.duedate.today"
+    | "task.duedate.thisweek"
+    | "project.completion.above"
+    | "project.completion.below";
+  expectedValue?: string;
+  taskId?: string;
+  percentage?: number;
+}
+
+/**
+ * Configuration for workflow action steps
+ */
+export interface ActionConfig {
+  actionType: "task.create" | "task.update" | "task.assign";
+  taskData: WorkflowTaskData;
+}
+
+/**
+ * Union type of all possible step configurations
+ */
+export type StepConfig = TriggerConfig | ConditionConfig | ActionConfig;
+
 /**
  * Represents a single step in a workflow automation
  * Each step can be a trigger (start point), condition (decision), or action (task execution)
@@ -7,7 +66,7 @@ export interface WorkflowStep {
   type: "trigger" | "condition" | "action"; // Defines the step behavior type
   name: string;
   description: string;
-  config: Record<string, any>; // Step-specific configuration (trigger type, condition rules, action parameters)
+  config: StepConfig; // Step-specific configuration (trigger type, condition rules, action parameters)
   nextSteps: string[]; // Array of step IDs to execute after this step completes
 }
 
@@ -40,7 +99,7 @@ export interface WorkflowExecutionContext {
   completedAt?: Date;
   status: "running" | "completed" | "failed";
   currentStep?: string; // ID of the currently executing step
-  data: Record<string, any>; // Shared data passed between workflow steps
+  data: Record<string, unknown>; // Shared data passed between workflow steps
   error?: string; // Error message if execution failed
 }
 
@@ -324,19 +383,30 @@ export const createWorkflowFromTemplate = (
   }));
 
   // Resolve step references by converting template indices to actual step IDs
-  template.steps.forEach((templateStep, index) => {
-    steps[index].nextSteps = templateStep.nextSteps.map((nextStepRef) => {
-      if (nextStepRef.startsWith("step-")) {
-        const refIndex = parseInt(nextStepRef.split("-")[1]);
-        if (!isNaN(refIndex) && refIndex < steps.length) {
-          return steps[refIndex].id;
-        }
-      }
-      return nextStepRef;
-    });
-  });
+  for (let i = 0; i < template.steps.length; i++) {
+    const templateStep = template.steps.find((_, idx) => idx === i);
+    const currentStep = steps.find((_, idx) => idx === i);
 
-  const triggerStep = steps[template.triggerStepIndex];
+    if (templateStep && currentStep) {
+      currentStep.nextSteps = templateStep.nextSteps.map((nextStepRef) => {
+        if (nextStepRef.startsWith("step-")) {
+          const splitRef = nextStepRef.split("-");
+          const refIndex = Number.parseInt(splitRef[1]);
+          const targetStep =
+            !Number.isNaN(refIndex) && refIndex >= 0 && refIndex < steps.length
+              ? steps.find((_, idx) => idx === refIndex) || null
+              : null;
+
+          if (targetStep) {
+            return targetStep.id;
+          }
+        }
+        return nextStepRef;
+      });
+    }
+  }
+
+  const triggerStep = steps[template.triggerStepIndex] || steps[0];
 
   return { steps, triggerStep };
 };
@@ -402,7 +472,7 @@ export const getWorkflow = async (
       return null;
     }
 
-    return convertFirestoreWorkflow(workflow) as Workflow;
+    return convertFirestoreWorkflow(workflow);
   } catch (error) {
     console.error("Error fetching workflow:", error);
     return null;
@@ -424,9 +494,7 @@ export const getWorkflowsByProject = async (
     const workflows = await queryDocuments("workflows", [
       where("projectId", "==", projectId),
     ]);
-    return workflows.map((workflow) =>
-      convertFirestoreWorkflow(workflow)
-    ) as Workflow[];
+    return workflows.map(convertFirestoreWorkflow);
   } catch (error) {
     console.error("Error fetching workflows:", error);
     return [];
@@ -439,15 +507,27 @@ export const getWorkflowsByProject = async (
  * @param firestoreData - Raw data from Firestore document
  * @returns Converted workflow object with proper Date types
  */
-const convertFirestoreWorkflow = (firestoreData: any): Workflow => {
-  const workflow = { ...firestoreData };
+const convertFirestoreWorkflow = (
+  firestoreData: Record<string, unknown>
+): Workflow => {
+  const workflow = { ...firestoreData } as unknown as Workflow;
 
   // Convert Firestore timestamps to JavaScript Date objects
-  if (workflow.createdAt && typeof workflow.createdAt.toDate === "function") {
-    workflow.createdAt = workflow.createdAt.toDate();
+  interface FirestoreTimestamp {
+    toDate: () => Date;
   }
-  if (workflow.updatedAt && typeof workflow.updatedAt.toDate === "function") {
-    workflow.updatedAt = workflow.updatedAt.toDate();
+
+  const isTimestamp = (val: unknown): val is FirestoreTimestamp =>
+    val !== null &&
+    typeof val === "object" &&
+    "toDate" in val &&
+    typeof (val as FirestoreTimestamp).toDate === "function";
+
+  if (isTimestamp(firestoreData.createdAt)) {
+    workflow.createdAt = firestoreData.createdAt.toDate();
+  }
+  if (isTimestamp(firestoreData.updatedAt)) {
+    workflow.updatedAt = firestoreData.updatedAt.toDate();
   }
 
   return workflow;
@@ -526,15 +606,12 @@ function validateWorkflow(workflow: Workflow): void {
     (step) => step.id === workflow.triggerStep
   );
 
-  if (!triggerStep) {
-    throw new Error("Workflow must have a manual trigger step");
+  if (triggerStep?.type !== "trigger") {
+    throw new Error("Workflow must start with a trigger step");
   }
 
-  if (triggerStep.type !== "trigger") {
-    throw new Error('The trigger step must be of type "trigger"');
-  }
-
-  if (triggerStep.config.triggerType !== "manual") {
+  const triggerConfig = triggerStep.config as TriggerConfig;
+  if (triggerConfig.triggerType !== "manual") {
     throw new Error("All workflows must use manual triggers only");
   }
 
@@ -609,7 +686,7 @@ function validateWorkflow(workflow: Workflow): void {
  */
 export const executeWorkflow = async (
   workflowId: string,
-  initialData: Record<string, any> = {}
+  initialData: Record<string, unknown> = {}
 ): Promise<WorkflowExecutionContext> => {
   const workflow = await getWorkflow(workflowId);
 
@@ -688,7 +765,9 @@ async function executeWorkflowStep(
     case "condition": {
       // Evaluate condition and store result for potential use by subsequent steps
       const conditionResult = await evaluateCondition(step, context.data);
-      context.data.lastConditionResult = conditionResult;
+      if (context.data && typeof context.data === "object") {
+        context.data.lastConditionResult = conditionResult;
+      }
       break;
     }
 
@@ -718,60 +797,70 @@ async function executeWorkflowStep(
  */
 async function evaluateCondition(
   step: WorkflowStep,
-  data: Record<string, any>
+  data: Record<string, unknown>
 ): Promise<boolean> {
   if (step.type !== "condition") {
     throw new Error("Cannot evaluate non-condition step");
   }
 
-  const { conditionType, expectedValue, taskId, percentage } = step.config;
+  const config = step.config as ConditionConfig;
+  const { conditionType, expectedValue, taskId, percentage } = config;
 
   // Route to appropriate evaluation function based on condition type
   switch (conditionType) {
     case "task.status.equals":
       return await evaluateTaskStatus(
-        taskId || data.taskId,
-        expectedValue,
+        taskId || (data.taskId as string),
+        expectedValue ?? "",
         data
       );
 
     case "task.priority.equals":
       return await evaluateTaskPriority(
-        taskId || data.taskId,
-        expectedValue,
+        taskId || (data.taskId as string),
+        expectedValue ?? "",
         data
       );
 
     case "task.assignee.equals":
       return await evaluateTaskAssignee(
-        taskId || data.taskId,
-        expectedValue,
+        taskId || (data.taskId as string),
+        expectedValue ?? "",
         data
       );
 
     case "task.assignee.empty":
-      return await evaluateTaskUnassigned(taskId || data.taskId, data);
+      return await evaluateTaskUnassigned(
+        taskId || (data.taskId as string),
+        data
+      );
 
     case "task.duedate.overdue":
-      return await evaluateTaskOverdue(taskId || data.taskId, data);
+      return await evaluateTaskOverdue(taskId || (data.taskId as string), data);
 
     case "task.duedate.today":
-      return await evaluateTaskDueToday(taskId || data.taskId, data);
+      return await evaluateTaskDueToday(
+        taskId || (data.taskId as string),
+        data
+      );
 
     case "task.duedate.thisweek":
-      return await evaluateTaskDueThisWeek(taskId || data.taskId, data);
+      return await evaluateTaskDueThisWeek(
+        taskId || (data.taskId as string),
+        data
+      );
 
     case "project.completion.above":
       return await evaluateProjectCompletionAbove(
-        data.projectId,
-        percentage,
+        data.projectId as string,
+        percentage ?? 0,
         data
       );
 
     case "project.completion.below":
       return await evaluateProjectCompletionBelow(
-        data.projectId,
-        percentage,
+        data.projectId as string,
+        percentage ?? 0,
         data
       );
 
@@ -790,7 +879,7 @@ async function evaluateCondition(
 async function evaluateTaskStatus(
   taskId: string,
   expectedStatus: string,
-  data: Record<string, any>
+  _data: Record<string, unknown>
 ): Promise<boolean> {
   if (!taskId) return false;
 
@@ -814,7 +903,7 @@ async function evaluateTaskStatus(
 async function evaluateTaskPriority(
   taskId: string,
   expectedPriority: string,
-  data: Record<string, any>
+  _data: Record<string, unknown>
 ): Promise<boolean> {
   if (!taskId) return false;
 
@@ -839,7 +928,7 @@ async function evaluateTaskPriority(
 async function evaluateTaskAssignee(
   taskId: string,
   expectedAssignee: string,
-  data: Record<string, any>
+  _data: Record<string, unknown>
 ): Promise<boolean> {
   if (!taskId) return false;
 
@@ -866,7 +955,7 @@ async function evaluateTaskAssignee(
  */
 async function evaluateTaskUnassigned(
   taskId: string,
-  data: Record<string, any>
+  _data: Record<string, unknown>
 ): Promise<boolean> {
   if (!taskId) return false;
 
@@ -894,7 +983,7 @@ async function evaluateTaskUnassigned(
  */
 async function evaluateTaskOverdue(
   taskId: string,
-  data: Record<string, any>
+  _data: Record<string, unknown>
 ): Promise<boolean> {
   if (!taskId) return false;
 
@@ -918,7 +1007,7 @@ async function evaluateTaskOverdue(
 
 async function evaluateTaskDueToday(
   taskId: string,
-  data: Record<string, any>
+  _data: Record<string, unknown>
 ): Promise<boolean> {
   if (!taskId) return false;
 
@@ -947,7 +1036,7 @@ async function evaluateTaskDueToday(
  */
 async function evaluateTaskDueThisWeek(
   taskId: string,
-  data: Record<string, any>
+  _data: Record<string, unknown>
 ): Promise<boolean> {
   if (!taskId) return false;
 
@@ -979,7 +1068,7 @@ async function evaluateTaskDueThisWeek(
 async function evaluateProjectCompletionAbove(
   projectId: string,
   percentage: number,
-  data: Record<string, any>
+  _data: Record<string, unknown>
 ): Promise<boolean> {
   if (!projectId || percentage === undefined) return false;
 
@@ -987,16 +1076,14 @@ async function evaluateProjectCompletionAbove(
     const { queryDocuments } = await import("@/lib/firebase/firestoreService");
     const { where } = await import("firebase/firestore");
 
-    const tasks = await queryDocuments("tasks", [
+    const tasks = (await queryDocuments("tasks", [
       where("projectId", "==", projectId),
-    ]);
+    ])) as Task[];
 
     // Projects with no tasks are considered 0% complete
     if (tasks.length === 0) return false;
 
-    const completedTasks = tasks.filter(
-      (task: any) => task.status === "completed"
-    );
+    const completedTasks = tasks.filter((task) => task.status === "completed");
     const completionPercentage = (completedTasks.length / tasks.length) * 100;
 
     return completionPercentage > percentage;
@@ -1017,7 +1104,7 @@ async function evaluateProjectCompletionAbove(
 async function evaluateProjectCompletionBelow(
   projectId: string,
   percentage: number,
-  data: Record<string, any>
+  _data: Record<string, unknown>
 ): Promise<boolean> {
   if (!projectId || percentage === undefined) return false;
 
@@ -1025,16 +1112,14 @@ async function evaluateProjectCompletionBelow(
     const { queryDocuments } = await import("@/lib/firebase/firestoreService");
     const { where } = await import("firebase/firestore");
 
-    const tasks = await queryDocuments("tasks", [
+    const tasks = (await queryDocuments("tasks", [
       where("projectId", "==", projectId),
-    ]);
+    ])) as Task[];
 
     // Projects with no tasks are considered 0% complete
     if (tasks.length === 0) return true;
 
-    const completedTasks = tasks.filter(
-      (task: any) => task.status === "completed"
-    );
+    const completedTasks = tasks.filter((task) => task.status === "completed");
     const completionPercentage = (completedTasks.length / tasks.length) * 100;
 
     return completionPercentage < percentage;
@@ -1054,13 +1139,14 @@ async function evaluateProjectCompletionBelow(
  */
 async function executeAction(
   step: WorkflowStep,
-  data: Record<string, any>
-): Promise<Record<string, any>> {
+  data: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   if (step.type !== "action") {
     throw new Error("Cannot execute non-action step");
   }
 
-  const { actionType } = step.config;
+  const config = step.config as ActionConfig;
+  const { actionType } = config;
 
   try {
     // Dispatch to specific action handlers based on action type
@@ -1093,38 +1179,44 @@ async function executeAction(
  */
 async function executeTaskCreate(
   step: WorkflowStep,
-  data: Record<string, any>
-): Promise<Record<string, any>> {
+  data: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const { createDocument } = await import("@/lib/firebase/firestoreService");
   const { serverTimestamp } = await import("firebase/firestore");
 
+  const config = step.config as ActionConfig;
+  const { taskData } = config;
   // Build task data with defaults and config overrides
-  const taskData = {
-    title: step.config.taskData.title || "New Task",
-    description: step.config.taskData.description || "",
-    assignee: step.config.taskData.assignee || "Unassigned",
-    assignedTo: step.config.taskData.assignee || undefined,
-    priority: step.config.taskData.priority || "medium",
-    dueDate: step.config.taskData.dueDate || "",
+  const newTaskData = {
+    title: taskData.title || "New Task",
+    description: taskData.description || "",
+    assignee: taskData.assignee || "Unassigned",
+    assignedTo: taskData.assignee || undefined,
+    priority: taskData.priority || "medium",
+    dueDate: taskData.dueDate || "",
     status: "pending" as const,
-    projectId: step.config.taskData.projectId || data.projectId,
-    organizationId: step.config.taskData.organizationId || data.organizationId,
+    projectId: taskData.projectId || data.projectId,
+    organizationId: taskData.organizationId || data.organizationId,
     createdBy: data.currentUser || "system",
     createdAt: serverTimestamp(),
     timeSpent: 0,
   };
 
-  if (!taskData.projectId) {
+  if (!newTaskData.projectId) {
     throw new Error("Project ID is required for task creation");
   }
 
-  if (!taskData.organizationId) {
+  if (!newTaskData.organizationId) {
     throw new Error("Organization ID is required for task creation");
   }
 
-  const taskId = await createDocument("tasks", taskData);
+  const taskId = await createDocument("tasks", newTaskData);
 
-  return { taskId, taskCreated: true, taskData: { ...taskData, id: taskId } };
+  return {
+    taskId,
+    taskCreated: true,
+    taskData: { ...newTaskData, id: taskId },
+  };
 }
 
 /**
@@ -1137,42 +1229,37 @@ async function executeTaskCreate(
  */
 async function executeTaskUpdate(
   step: WorkflowStep,
-  data: Record<string, any>
-): Promise<Record<string, any>> {
+  data: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const { updateDocument } = await import("@/lib/firebase/firestoreService");
-  const { serverTimestamp } = await import("firebase/firestore");
 
-  // Get task ID from config or context
-  const taskId = step.config.taskData.taskId || data.taskId;
-
-  if (!taskId) {
-    throw new Error("Task ID is required for task update");
+  const config = step.config as ActionConfig;
+  if (!config.taskData.taskId && !data.taskId) {
+    throw new Error("Missing task ID for update action");
   }
+
+  const taskId = (config.taskData.taskId || data.taskId) as string;
 
   // Build update data with fields to update
-  const updateData: Record<string, any> = {};
+  const updateData: Record<string, unknown> = {};
 
-  if (step.config.taskData.title !== undefined) {
-    updateData.title = step.config.taskData.title;
+  if (config.taskData.title !== undefined) {
+    updateData.title = config.taskData.title;
   }
-  if (step.config.taskData.description !== undefined) {
-    updateData.description = step.config.taskData.description;
+  if (config.taskData.description !== undefined) {
+    updateData.description = config.taskData.description;
   }
-  if (step.config.taskData.status !== undefined) {
-    updateData.status = step.config.taskData.status;
-    if (step.config.taskData.status === "completed") {
-      updateData.completedAt = serverTimestamp();
-    }
+  if (config.taskData.assignee !== undefined) {
+    updateData.assignee = config.taskData.assignee;
   }
-  if (step.config.taskData.priority !== undefined) {
-    updateData.priority = step.config.taskData.priority;
+  if (config.taskData.dueDate !== undefined) {
+    updateData.dueDate = config.taskData.dueDate;
   }
-  if (step.config.taskData.dueDate !== undefined) {
-    updateData.dueDate = step.config.taskData.dueDate;
+  if (config.taskData.priority !== undefined) {
+    updateData.priority = config.taskData.priority;
   }
-  if (step.config.taskData.assignee !== undefined) {
-    updateData.assignee = step.config.taskData.assignee;
-    updateData.assignedTo = step.config.taskData.assignee;
+  if (config.taskData.status !== undefined) {
+    updateData.status = config.taskData.status;
   }
 
   await updateDocument("tasks", taskId, updateData);
@@ -1190,14 +1277,15 @@ async function executeTaskUpdate(
  */
 async function executeTaskAssign(
   step: WorkflowStep,
-  data: Record<string, any>
-): Promise<Record<string, any>> {
+  data: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const { updateDocument } = await import("@/lib/firebase/firestoreService");
 
+  const config = step.config as ActionConfig;
   // Get task ID and assignee from config or context
-  const taskId = step.config.taskData.taskId || data.taskId;
-  const assignee = step.config.taskData.assignee;
-  const assignedBy = step.config.taskData.assignedBy || data.currentUser;
+  const taskId = (config.taskData.taskId || data.taskId) as string;
+  const assignee = (config.taskData.assignee || data.assignee) as string;
+  const assignedBy = (config.taskData.assignedBy || data.currentUser) as string;
 
   if (!taskId) {
     throw new Error("Task ID is required for task assignment");

@@ -5,12 +5,14 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
+  useMemo,
   ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./useAuth";
-import { getUserOrganizations, getOrganization } from "./organizationService";
-import { Organization, OrganizationWithDetails } from "../types/organization";
+import { getUserOrganizations } from "./organizationService";
+import { OrganizationWithDetails } from "../types/organization";
 
 /**
  * Context type definition for organization management
@@ -35,7 +37,9 @@ const OrganizationContext = createContext<OrganizationContextType | undefined>(
  * Handles organization state, active organization selection, and persistence
  * Automatically syncs with URL parameters and localStorage for seamless UX
  */
-export function OrganizationProvider({ children }: { children: ReactNode }) {
+export function OrganizationProvider({
+  children,
+}: Readonly<{ children: ReactNode }>) {
   // State management for organization data
   const [activeOrganization, setActiveOrganization] =
     useState<OrganizationWithDetails | null>(null);
@@ -54,7 +58,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
    * Priority order: URL parameter > localStorage > first organization
    * Handles edge cases like invalid stored IDs and empty organization lists
    */
-  const refreshOrganizations = async () => {
+  const refreshOrganizations = useCallback(async () => {
     // Early return if user is not authenticated
     if (!user) {
       setOrganizations([]);
@@ -72,7 +76,8 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       setOrganizations(userOrgs);
 
       // Extract organization ID from URL path (e.g., /organizations/org-123)
-      const orgIdFromUrl = pathname?.match(/\/organizations\/([^/]+)/)?.[1];
+      const match = pathname ? /\/organizations\/([^/]+)/.exec(pathname) : null;
+      const orgIdFromUrl = match?.[1];
 
       if (orgIdFromUrl) {
         // URL-based organization takes highest priority for deep linking
@@ -114,66 +119,71 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user, pathname]);
 
   // Trigger organization refresh when user changes or URL path changes
   useEffect(() => {
     refreshOrganizations();
   }, [user, pathname]);
 
-  // Listen for organization logo updates
-  useEffect(() => {
-    const handleLogoUpdate = (event: CustomEvent) => {
-      const { organizationId, logoUrl } = event.detail;
+  const handleLogoUpdate = useCallback((event: Event) => {
+    const customEvent = event as CustomEvent;
+    const { organizationId, logoUrl } = customEvent.detail;
 
-      // Update organizations list
-      setOrganizations((prev) =>
-        prev.map((org) =>
-          org.id === organizationId ? { ...org, logoUrl } : org
-        )
-      );
-
-      // Update active organization if it matches
-      setActiveOrganization((prev) =>
-        prev?.id === organizationId ? { ...prev, logoUrl } : prev
-      );
-    };
-
-    // Register global event listener for logo updates
-    window.addEventListener(
-      "organizationLogoUpdated",
-      handleLogoUpdate as EventListener
+    setOrganizations((prev) =>
+      prev.map((org) => (org.id === organizationId ? { ...org, logoUrl } : org))
     );
 
-    // Cleanup event listener on component unmount
+    setActiveOrganization((prev) =>
+      prev?.id === organizationId
+        ? ({ ...prev, logoUrl } as OrganizationWithDetails)
+        : prev
+    );
+  }, []);
+
+  // Listen for organization logo updates
+  useEffect(() => {
+    globalThis.addEventListener("organizationLogoUpdated", handleLogoUpdate);
+
     return () => {
-      window.removeEventListener(
+      globalThis.removeEventListener(
         "organizationLogoUpdated",
-        handleLogoUpdate as EventListener
+        handleLogoUpdate
       );
     };
-  }, []);
+  }, [handleLogoUpdate]);
 
   /**
    * Handler for manually setting active organization
    * Updates both state and localStorage for persistence
    */
-  const handleSetActiveOrganization = (
-    organization: OrganizationWithDetails
-  ) => {
-    setActiveOrganization(organization);
-    localStorage.setItem("lastActiveOrganization", organization.id);
-  };
+  const handleSetActiveOrganization = useCallback(
+    (organization: OrganizationWithDetails) => {
+      setActiveOrganization(organization);
+      localStorage.setItem("lastActiveOrganization", organization.id);
+    },
+    []
+  );
 
   // Context value object containing all organization state and methods
-  const value = {
-    activeOrganization,
-    organizations,
-    isLoading,
-    error,
-    setActiveOrganization: handleSetActiveOrganization,
-    refreshOrganizations,
-  };
+  const value = useMemo(
+    () => ({
+      activeOrganization,
+      organizations,
+      isLoading,
+      error,
+      setActiveOrganization: handleSetActiveOrganization,
+      refreshOrganizations,
+    }),
+    [
+      activeOrganization,
+      organizations,
+      isLoading,
+      error,
+      handleSetActiveOrganization,
+      refreshOrganizations,
+    ]
+  );
 
   return (
     <OrganizationContext.Provider value={value}>

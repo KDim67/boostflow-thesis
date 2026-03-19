@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { where } from "firebase/firestore";
 import { useAuth } from "@/lib/firebase/useAuth";
@@ -9,11 +9,7 @@ import {
   getOrganization,
   hasOrganizationPermission,
 } from "@/lib/firebase/organizationService";
-import {
-  getDocument,
-  getDocuments,
-  deleteDocument,
-} from "@/lib/firebase/firestoreService";
+import { getDocument, getDocuments } from "@/lib/firebase/firestoreService";
 import { Organization } from "@/lib/types/organization";
 import DocumentUploadModal from "@/components/modals/DocumentUploadModal";
 
@@ -70,7 +66,6 @@ export default function ProjectDocumentsPage() {
 
   // Authentication and navigation
   const { user } = useAuth(); // Current authenticated user
-  const router = useRouter(); // Next.js router for navigation
 
   // Normalize route parameters (handle both string and array formats)
   const organizationId = Array.isArray(id) ? id[0] : id;
@@ -90,7 +85,7 @@ export default function ProjectDocumentsPage() {
       ]);
 
       // Transform raw Firestore data into UI-friendly format
-      const formattedDocs = docs.map((doc: any) => ({
+      const formattedDocs = docs.map((doc: Document) => ({
         id: doc.id,
         name: doc.name,
         type: doc.type,
@@ -290,7 +285,7 @@ export default function ProjectDocumentsPage() {
    * Adds the new document to the beginning of the list and closes the modal
    * @param document - The newly uploaded document object
    */
-  const handleUploadSuccess = (document: any) => {
+  const handleUploadSuccess = (document: Document) => {
     setDocuments((prev) => [document, ...prev]);
     setShowUploadModal(false);
   };
@@ -328,16 +323,16 @@ export default function ProjectDocumentsPage() {
 
       // Convert response to blob and create download link
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = window.document.createElement("a");
+      const url = globalThis.URL.createObjectURL(blob);
+      const a = globalThis.document.createElement("a");
       a.href = url;
       a.download = document.name; // Use original filename
-      window.document.body.appendChild(a);
+      globalThis.document.body.appendChild(a);
       a.click(); // Trigger download
 
       // Clean up
-      window.URL.revokeObjectURL(url);
-      window.document.body.removeChild(a);
+      globalThis.URL.revokeObjectURL(url);
+      a.remove();
     } catch (error) {
       console.error("Error downloading document:", error);
       setError("Failed to download document. Please try again.");
@@ -481,10 +476,14 @@ export default function ProjectDocumentsPage() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center space-x-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label
+                htmlFor="folder-filter"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
                 Filter by Folder
               </label>
               <select
+                id="folder-filter"
                 value={selectedFolder}
                 onChange={(e) => setSelectedFolder(e.target.value)}
                 className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -499,11 +498,15 @@ export default function ProjectDocumentsPage() {
             </div>
           </div>
           <div className="flex-1 max-w-md">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor="search-documents"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               Search Documents
             </label>
             <div className="relative">
               <input
+                id="search-documents"
                 type="text"
                 placeholder="Search by document name..."
                 value={searchTerm}
@@ -734,10 +737,14 @@ export default function ProjectDocumentsPage() {
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label
+                    htmlFor="folder-name"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                  >
                     Folder Name
                   </label>
                   <input
+                    id="folder-name"
                     type="text"
                     value={newFolderName}
                     onChange={(e) => setNewFolderName(e.target.value)}

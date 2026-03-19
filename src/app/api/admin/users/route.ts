@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getAllUsers } from "@/lib/services/platform/platformAdminService";
 
 /**
@@ -8,7 +8,7 @@ import { getAllUsers } from "@/lib/services/platform/platformAdminService";
  * @param request - Next.js request object (unused but required by API route signature)
  * @returns JSON response containing array of users or error message
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Fetch all users from the platform admin service
     const users = await getAllUsers();

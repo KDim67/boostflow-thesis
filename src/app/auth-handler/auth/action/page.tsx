@@ -29,8 +29,6 @@ function EmailActionHandlerContent() {
 
   const mode = searchParams.get("mode");
   const oobCode = searchParams.get("oobCode");
-  const continueUrl = searchParams.get("continueUrl");
-  const lang = searchParams.get("lang") || "en";
 
   useEffect(() => {
     if (!mode || !oobCode) {
@@ -131,7 +129,7 @@ function EmailActionHandlerContent() {
 
         case "recoverEmail": {
           // Handle email recovery
-          const info = await checkActionCode(auth, code);
+          await checkActionCode(auth, code);
           await applyActionCode(auth, code);
           setResult({
             success: true,
@@ -146,12 +144,13 @@ function EmailActionHandlerContent() {
             message: "Invalid action mode.",
           });
       }
-    } catch (error: any) {
-      console.error("Error handling action:", error);
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      console.error("Error handling action:", err);
       setResult({
         success: false,
         message:
-          error.message || "An error occurred while processing your request.",
+          err.message || "An error occurred while processing your request.",
       });
     } finally {
       setLoading(false);
@@ -199,14 +198,15 @@ function EmailActionHandlerContent() {
         const baseUrl =
           process.env.NEXT_PUBLIC_APP_URL || "https://boostflow.me";
         const redirectUrl = `${baseUrl}/login?passwordReset=true`;
-        window.location.href = redirectUrl;
+        globalThis.location.href = redirectUrl;
       }, 3000);
-    } catch (error: any) {
-      console.error("Error resetting password:", error);
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      console.error("Error resetting password:", err);
       setResult({
         success: false,
         message:
-          error.message || "An error occurred while resetting your password.",
+          err.message || "An error occurred while resetting your password.",
       });
     } finally {
       setLoading(false);
@@ -240,10 +240,11 @@ function EmailActionHandlerContent() {
 
         {result && (
           <div
-            className={`rounded-md p-4 ${result.success
+            className={`rounded-md p-4 ${
+              result.success
                 ? "bg-green-50 border border-green-200"
                 : "bg-red-50 border border-red-200"
-              }`}
+            }`}
           >
             <div className="flex">
               <div className="flex-shrink-0">
@@ -275,8 +276,9 @@ function EmailActionHandlerContent() {
               </div>
               <div className="ml-3">
                 <p
-                  className={`text-sm font-medium ${result.success ? "text-green-800" : "text-red-800"
-                    }`}
+                  className={`text-sm font-medium ${
+                    result.success ? "text-green-800" : "text-red-800"
+                  }`}
                 >
                   {result.message}
                 </p>

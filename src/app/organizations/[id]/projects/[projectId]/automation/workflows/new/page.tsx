@@ -28,10 +28,8 @@ export default function NewWorkflowPage() {
 
   // Handle potential array values from Next.js dynamic routes
   // useParams() can return string[] for catch-all routes, so we extract the first element
-  const organizationId = Array.isArray(id) ? id[0] : (id as string);
-  const projectIdString = Array.isArray(projectId)
-    ? projectId[0]
-    : (projectId as string);
+  const organizationId = Array.isArray(id) ? id[0] : id;
+  const projectIdString = Array.isArray(projectId) ? projectId[0] : projectId;
 
   // Load organization and project data with permission validation
   useEffect(() => {

@@ -46,21 +46,22 @@ export default function ForgotPasswordPage() {
         type: "success",
         text: "Password reset email sent! Please check your inbox and follow the instructions to reset your password.",
       });
-    } catch (error: any) {
-      console.error("Error sending password reset email:", error);
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
+      console.error("Error sending password reset email:", err);
 
       // Handle specific Firebase auth error codes with user-friendly messages
-      if (error.code === "auth/user-not-found") {
+      if (err.code === "auth/user-not-found") {
         setMessage({
           type: "error",
           text: "No account found with this email address",
         });
-      } else if (error.code === "auth/invalid-email") {
+      } else if (err.code === "auth/invalid-email") {
         setMessage({
           type: "error",
           text: "Please enter a valid email address",
         });
-      } else if (error.code === "auth/too-many-requests") {
+      } else if (err.code === "auth/too-many-requests") {
         setMessage({
           type: "error",
           text: "Too many requests. Please try again later.",
@@ -70,7 +71,7 @@ export default function ForgotPasswordPage() {
         setMessage({
           type: "error",
           text:
-            error.message ||
+            err.message ||
             "Failed to send password reset email. Please try again.",
         });
       }
@@ -126,7 +127,42 @@ export default function ForgotPasswordPage() {
                 </div>
               )}
 
-              {!emailSent ? (
+              {emailSent ? (
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <svg
+                      className="mx-auto h-12 w-12 text-green-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">
+                      Email Sent!
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      We've sent a password reset link to{" "}
+                      <strong>{email}</strong>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setEmailSent(false);
+                      setMessage(null);
+                      setEmail("");
+                    }}
+                    className="w-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium py-3 px-6 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
+                  >
+                    Send to Different Email
+                  </button>
+                </div>
+              ) : (
                 <form className="space-y-6" onSubmit={handleSubmit}>
                   <div>
                     <label
@@ -183,41 +219,6 @@ export default function ForgotPasswordPage() {
                     </button>
                   </div>
                 </form>
-              ) : (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <svg
-                      className="mx-auto h-12 w-12 text-green-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">
-                      Email Sent!
-                    </h3>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      We've sent a password reset link to{" "}
-                      <strong>{email}</strong>
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setEmailSent(false);
-                      setMessage(null);
-                      setEmail("");
-                    }}
-                    className="w-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium py-3 px-6 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
-                  >
-                    Send to Different Email
-                  </button>
-                </div>
               )}
 
               <div className="mt-6 text-center">

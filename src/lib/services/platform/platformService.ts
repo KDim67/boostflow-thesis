@@ -4,7 +4,6 @@ import {
   where,
   orderBy,
   limit,
-  getDocs,
   getCountFromServer,
   Timestamp,
 } from "firebase/firestore";
@@ -141,7 +140,7 @@ export const getPlatformMetrics = async (): Promise<PlatformMetrics> => {
     }
 
     // Round to one decimal place for display
-    userGrowthRate = parseFloat(userGrowthRate.toFixed(1));
+    userGrowthRate = Number.parseFloat(userGrowthRate.toFixed(1));
 
     // Query organizations created in previous month and current month
     const previousMonthOrgsQuery = query(
@@ -174,7 +173,9 @@ export const getPlatformMetrics = async (): Promise<PlatformMetrics> => {
       organizationGrowthRate = 100;
     }
 
-    organizationGrowthRate = parseFloat(organizationGrowthRate.toFixed(1));
+    organizationGrowthRate = Number.parseFloat(
+      organizationGrowthRate.toFixed(1)
+    );
 
     return {
       totalOrganizations,
@@ -209,17 +210,18 @@ export const getSystemHealth = async (): Promise<SystemHealthStatus[]> => {
     const healthData = await queryDocuments("systemHealth");
 
     // Transform raw health data and map status to color codes
-    return healthData.map((service) => ({
-      name: service.name,
-      status: service.status,
-      statusColor:
-        service.status === "Operational"
-          ? "green"
-          : service.status === "Degraded"
-            ? "yellow"
-            : "red",
-      lastUpdated: service.lastUpdated?.toDate(),
-    }));
+    return healthData.map((service) => {
+      let color: "green" | "yellow" | "red" = "red";
+      if (service.status === "Operational") color = "green";
+      else if (service.status === "Degraded") color = "yellow";
+
+      return {
+        name: service.name,
+        status: service.status,
+        statusColor: color,
+        lastUpdated: service.lastUpdated?.toDate(),
+      };
+    });
   } catch (error) {
     console.error("Error fetching system health:", error);
     // Return mock data as fallback to ensure UI remains functional
@@ -306,8 +308,7 @@ export const getRecentActivityLogs = async (
     }
 
     // Always order by timestamp (newest first) and apply limit
-    queryConstraints.push(orderBy("timestamp", "desc"));
-    queryConstraints.push(limit(limitCount));
+    queryConstraints.push(orderBy("timestamp", "desc"), limit(limitCount));
 
     try {
       const logsData = await queryDocuments("activityLogs", queryConstraints);

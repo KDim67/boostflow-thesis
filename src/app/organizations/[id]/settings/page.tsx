@@ -158,22 +158,6 @@ export default function OrganizationSettings() {
   };
 
   /**
-   * Handles notification settings changes
-   * Updates nested notification settings object while preserving other settings
-   */
-  const handleNotificationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, checked } = e.target;
-
-    setFormData((prev) => ({
-      ...prev,
-      notificationSettings: {
-        ...prev.notificationSettings,
-        [name]: checked,
-      },
-    }));
-  };
-
-  /**
    * Handles logo file selection and initiates the cropping workflow
    * Creates a preview URL and opens the image cropper modal
    */
@@ -199,7 +183,12 @@ export default function OrganizationSettings() {
    * 4. Updates local state and dispatches global event
    * 5. Cleans up temporary resources
    */
-  const handleCropComplete = async (croppedAreaPixels: any) => {
+  const handleCropComplete = async (croppedAreaPixels: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => {
     if (!selectedImage || !organizationId) return;
 
     try {
@@ -220,7 +209,7 @@ export default function OrganizationSettings() {
       );
 
       // Upload the cropped image
-      const result = await uploadOrganizationLogo(croppedFile, organizationId, {
+      await uploadOrganizationLogo(croppedFile, organizationId, {
         onSuccess: (result) => {
           // Update form data with new logo URL
           setFormData((prev) => ({
@@ -235,7 +224,7 @@ export default function OrganizationSettings() {
             });
           }
           // Dispatch event to update organization logo across the app
-          window.dispatchEvent(
+          globalThis.dispatchEvent(
             new CustomEvent("organizationLogoUpdated", {
               detail: { organizationId, logoUrl: result.url },
             })
@@ -300,7 +289,7 @@ export default function OrganizationSettings() {
         }
 
         // Dispatch event to update organization logo across the app
-        window.dispatchEvent(
+        globalThis.dispatchEvent(
           new CustomEvent("organizationLogoUpdated", {
             detail: { organizationId, logoUrl: "" },
           })
@@ -436,7 +425,7 @@ export default function OrganizationSettings() {
 
       // Redirect to organizations list after brief delay
       setTimeout(() => {
-        window.location.href = "/organizations";
+        globalThis.location.href = "/organizations";
       }, 2000);
     } catch (error) {
       console.error("Error deleting organization:", error);
@@ -635,9 +624,9 @@ export default function OrganizationSettings() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                    <span className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
                       Organization Logo
-                    </label>
+                    </span>
                     <div className="space-y-4">
                       {/* Current Logo Preview */}
                       {formData.logoUrl && (

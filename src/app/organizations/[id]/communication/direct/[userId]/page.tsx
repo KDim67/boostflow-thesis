@@ -17,11 +17,9 @@ import {
   Message,
   getOrCreateDirectMessageChannel,
 } from "@/lib/services/collaboration/communicationService";
-// Date formatting utility
-import { formatDistanceToNow } from "date-fns";
+
 // Firestore database utilities
 import {
-  queryDocuments,
   timestampToDate,
   getCollectionRef,
 } from "@/lib/firebase/firestoreService";
@@ -32,7 +30,27 @@ import {
   query,
   onSnapshot,
   Unsubscribe,
+  Timestamp,
+  QuerySnapshot,
+  DocumentData,
 } from "firebase/firestore";
+
+function processSnapshot(
+  querySnapshot: QuerySnapshot<DocumentData>,
+  timestampConverter: typeof timestampToDate
+): Message[] {
+  return querySnapshot.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      ...data,
+      id: doc.id,
+      createdAt: timestampConverter(data.createdAt as Timestamp) || new Date(),
+      updatedAt: data.updatedAt
+        ? timestampConverter(data.updatedAt as Timestamp) || undefined
+        : undefined,
+    } as Message;
+  });
+}
 
 /**
  * DirectMessagePage Component
@@ -51,8 +69,18 @@ export default function DirectMessagePage() {
   const otherUserId = Array.isArray(userId) ? userId[0] : userId;
 
   // User profile states
-  const [otherUser, setOtherUser] = useState<any>(null); // Profile of the user being messaged
-  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null); // Current user's profile
+  const [otherUser, setOtherUser] = useState<{
+    displayName?: string;
+    email?: string;
+    photoURL?: string;
+    profilePicture?: string;
+  } | null>(null); // Profile of the user being messaged
+  const [currentUserProfile, setCurrentUserProfile] = useState<{
+    displayName?: string;
+    email?: string;
+    photoURL?: string;
+    profilePicture?: string;
+  } | null>(null); // Current user's profile
 
   // Message and UI states
   const [messages, setMessages] = useState<Message[]>([]); // Array of conversation messages
@@ -89,7 +117,9 @@ export default function DirectMessagePage() {
    * Generates user initials for avatar display
    * Priority: displayName (first + last initial) > email (first char) > 'U' fallback
    */
-  const getInitials = (user: any) => {
+  const getInitials = (
+    user: { displayName?: string; email?: string } | null
+  ) => {
     const displayName = user?.displayName;
     const email = user?.email;
 
@@ -97,7 +127,7 @@ export default function DirectMessagePage() {
       const names = displayName.split(" ").filter(Boolean);
       // Use first and last name initials if available
       if (names.length >= 2) {
-        return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+        return (names[0][0] + (names.at(-1)?.[0] ?? "")).toUpperCase();
       }
       return displayName[0].toUpperCase();
     }
@@ -164,7 +194,9 @@ export default function DirectMessagePage() {
         setCurrentUserProfile(currentProfile);
 
         // Create deterministic conversation ID by sorting user IDs
-        const conversationId = [user.uid, otherUserId].sort().join("_");
+        const conversationId = [user.uid, otherUserId]
+          .sort((a, b) => a.localeCompare(b))
+          .join("_");
 
         // Set up real-time Firestore query for messages
         const messagesRef = getCollectionRef("messages");
@@ -178,21 +210,7 @@ export default function DirectMessagePage() {
         const unsubscribe = onSnapshot(
           q,
           (querySnapshot) => {
-            const messagesData: any[] = [];
-            querySnapshot.forEach((doc) => {
-              messagesData.push({ id: doc.id, ...doc.data() });
-            });
-
-            // Convert Firestore timestamps to JavaScript Date objects
-            const convertedMessages = messagesData.map((msg) => ({
-              ...msg,
-              createdAt: timestampToDate(msg.createdAt) || new Date(),
-              updatedAt: msg.updatedAt
-                ? timestampToDate(msg.updatedAt) || undefined
-                : undefined,
-            })) as Message[];
-
-            setMessages(convertedMessages);
+            setMessages(processSnapshot(querySnapshot, timestampToDate));
             setIsLoading(false);
           },
           (error) => {
@@ -240,7 +258,9 @@ export default function DirectMessagePage() {
     try {
       setIsSending(true);
       // Use same conversation ID generation logic as subscription
-      const conversationId = [user.uid, otherUserId].sort().join("_");
+      const conversationId = [user.uid, otherUserId]
+        .sort((a, b) => a.localeCompare(b))
+        .join("_");
 
       // Ensure the direct message channel exists in the database
       await getOrCreateDirectMessageChannel(
@@ -438,25 +458,12 @@ export default function DirectMessagePage() {
 
             <div className="flex items-center space-x-3">
               <div className="relative">
-                {otherUser.profilePicture ? (
-                  <img
-                    src={otherUser.profilePicture}
-                    alt={otherUser.displayName || otherUser.email}
-                    className="w-12 h-12 rounded-full ring-2 ring-blue-500/20 object-cover"
-                  />
-                ) : otherUser.photoURL ? (
-                  <img
-                    src={otherUser.photoURL}
-                    alt={otherUser.displayName || otherUser.email}
-                    className="w-12 h-12 rounded-full ring-2 ring-blue-500/20 object-cover"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center ring-2 ring-blue-500/20">
-                    <span className="text-white font-semibold text-lg">
-                      {getInitials(otherUser)}
-                    </span>
-                  </div>
-                )}
+                <UserAvatar
+                  user={otherUser}
+                  getInitials={getInitials}
+                  className="w-12 h-12 ring-blue-500/20"
+                  textSize="text-lg"
+                />
                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
               </div>
               <div>
@@ -513,103 +520,19 @@ export default function DirectMessagePage() {
           </div>
         ) : (
           // Message list: Render each message with conditional styling and grouping
-          messages.map((message, index) => {
-            const showAvatar =
-              index === 0 || messages[index - 1].author !== message.author;
-            const isCurrentUser = message.author === user?.uid;
-            const sender = isCurrentUser ? currentUserProfile : otherUser;
-            const showTimestamp =
-              showAvatar ||
-              (index > 0 &&
-                new Date(message.createdAt).getTime() -
-                  new Date(messages[index - 1].createdAt).getTime() >
-                  300000); // 5 minutes
-
-            return (
-              <div
-                key={message.id}
-                className={`flex items-start group ${showAvatar ? "mt-6" : "mt-1"} ${
-                  isCurrentUser
-                    ? "flex-row-reverse space-x-reverse space-x-3"
-                    : "space-x-3"
-                } hover:bg-gray-50/50 dark:hover:bg-gray-800/50 rounded-full p-3 -mx-3 transition-all duration-200 hover:scale-[1.01]`}
-              >
-                {showAvatar ? (
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0">
-                    {sender?.profilePicture ? (
-                      <img
-                        src={sender.profilePicture}
-                        alt={sender.displayName || sender.email}
-                        className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-gray-800 shadow-sm object-cover"
-                      />
-                    ) : sender?.photoURL ? (
-                      <img
-                        src={sender.photoURL}
-                        alt={sender.displayName || sender.email}
-                        className="w-10 h-10 rounded-full ring-2 ring-white dark:ring-gray-800 shadow-sm object-cover"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                        <span className="text-white font-semibold text-sm">
-                          {getInitials(sender)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="w-10 h-10 flex-shrink-0" />
-                )}
-
-                <div
-                  className={`flex-1 min-w-0 ${isCurrentUser ? "flex flex-col items-end" : ""}`}
-                >
-                  {showAvatar && (
-                    <div
-                      className={`flex items-center space-x-2 mb-2 ${
-                        isCurrentUser ? "flex-row-reverse space-x-reverse" : ""
-                      }`}
-                    >
-                      <span className="font-semibold text-gray-900 dark:text-white">
-                        {isCurrentUser
-                          ? "You"
-                          : otherUser.displayName || otherUser.email}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
-                        {formatMessageTime(new Date(message.createdAt))}
-                      </span>
-                    </div>
-                  )}
-
-                  <div
-                    className={`group/message relative inline-block px-4 py-3 rounded-full max-w-xs lg:max-w-md whitespace-pre-wrap break-words shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-[1.02] ${
-                      isCurrentUser
-                        ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white"
-                        : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 backdrop-blur-sm"
-                    }`}
-                  >
-                    {message.content}
-
-                    {/* Message status indicator for sent messages */}
-                    {isCurrentUser && (
-                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-2.5 h-2.5 text-white"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })
+          messages.map((message, index) => (
+            <MessageItem
+              key={message.id}
+              message={message}
+              index={index}
+              messages={messages}
+              user={user}
+              otherUser={otherUser}
+              currentUserProfile={currentUserProfile}
+              getInitials={getInitials}
+              formatMessageTime={formatMessageTime}
+            />
+          ))
         )}
         <div ref={messagesEndRef} />
 
@@ -665,7 +588,7 @@ export default function DirectMessagePage() {
                 ref={textareaRef}
                 value={newMessage}
                 onChange={handleTextareaChange}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyPress}
                 placeholder={`Message ${otherUser.displayName || otherUser.email}...`}
                 className="w-full px-4 py-3 pr-20 border border-gray-300 dark:border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white resize-none shadow-sm transition-all duration-200 hover:shadow-md"
                 style={{ minHeight: "48px", maxHeight: "120px" }}
@@ -706,3 +629,123 @@ export default function DirectMessagePage() {
     </div>
   );
 }
+
+const UserAvatar = ({
+  user,
+  className = "",
+  textSize = "text-sm",
+  getInitials,
+}: any) => {
+  if (user?.profilePicture) {
+    return (
+      <img
+        src={user.profilePicture}
+        alt={user.displayName || user.email}
+        className={`rounded-full ring-2 shadow-sm object-cover ${className}`}
+      />
+    );
+  }
+  if (user?.photoURL) {
+    return (
+      <img
+        src={user.photoURL}
+        alt={user.displayName || user.email}
+        className={`rounded-full ring-2 shadow-sm object-cover ${className}`}
+      />
+    );
+  }
+  return (
+    <div
+      className={`rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center ${className}`}
+    >
+      <span className={`text-white font-semibold ${textSize}`}>
+        {getInitials(user)}
+      </span>
+    </div>
+  );
+};
+
+const MessageItem = ({
+  message,
+  index,
+  messages,
+  user,
+  otherUser,
+  currentUserProfile,
+  getInitials,
+  formatMessageTime,
+}: any) => {
+  const showAvatar =
+    index === 0 || messages[index - 1].author !== message.author;
+  const isCurrentUser = message.author === user?.uid;
+  const sender = isCurrentUser ? currentUserProfile : otherUser;
+
+  return (
+    <div
+      className={`flex items-start group ${showAvatar ? "mt-6" : "mt-1"} ${
+        isCurrentUser
+          ? "flex-row-reverse space-x-reverse space-x-3"
+          : "space-x-3"
+      } hover:bg-gray-50/50 dark:hover:bg-gray-800/50 rounded-full p-3 -mx-3 transition-all duration-200 hover:scale-[1.01]`}
+    >
+      {showAvatar ? (
+        <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0">
+          <UserAvatar
+            user={sender}
+            getInitials={getInitials}
+            className="w-10 h-10 ring-white dark:ring-gray-800"
+            textSize="text-sm"
+          />
+        </div>
+      ) : (
+        <div className="w-10 h-10 flex-shrink-0" />
+      )}
+
+      <div
+        className={`flex-1 min-w-0 ${isCurrentUser ? "flex flex-col items-end" : ""}`}
+      >
+        {showAvatar && (
+          <div
+            className={`flex items-center space-x-2 mb-2 ${
+              isCurrentUser ? "flex-row-reverse space-x-reverse" : ""
+            }`}
+          >
+            <span className="font-semibold text-gray-900 dark:text-white">
+              {isCurrentUser ? "You" : otherUser.displayName || otherUser.email}
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
+              {formatMessageTime(new Date(message.createdAt))}
+            </span>
+          </div>
+        )}
+
+        <div
+          className={`group/message relative inline-block px-4 py-3 rounded-full max-w-xs lg:max-w-md whitespace-pre-wrap break-words shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-[1.02] ${
+            isCurrentUser
+              ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white"
+              : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 backdrop-blur-sm"
+          }`}
+        >
+          {message.content}
+
+          {/* Message status indicator for sent messages */}
+          {isCurrentUser && (
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
+              <svg
+                className="w-2.5 h-2.5 text-white"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
