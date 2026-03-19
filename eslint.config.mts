@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 import pluginReact from "eslint-plugin-react";
+import pluginSecurity from "eslint-plugin-security";
 import eslintConfigPrettier from "eslint-config-prettier";
 import { defineConfig } from "eslint/config";
 
@@ -24,7 +25,7 @@ export default defineConfig([
   },
   tseslint.configs.recommended,
   pluginReact.configs.flat.recommended,
-  // Disable conflict rules with Prettier
+  pluginSecurity.configs.recommended,
   eslintConfigPrettier,
   {
     rules: {

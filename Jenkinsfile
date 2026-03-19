@@ -73,6 +73,34 @@ pipeline {
             }
         }
         
+        stage('Quality Gate - Gitleaks') {
+            steps {
+                echo 'Running Gitleaks secret scanning on repository...'
+                script {
+                    def gitleaksResult = sh(
+                        script: """
+                            docker run --rm \
+                                -v \$(pwd):/repo \
+                                -w /repo \
+                                zricethezav/gitleaks:latest \
+                                detect \
+                                --source /repo \
+                                --report-format sarif \
+                                --report-path /repo/${REPORTS_DIR}/gitleaks-report.sarif \
+                                --no-git
+                        """,
+                        returnStatus: true
+                    )
+                    
+                    if (gitleaksResult == 0) {
+                        echo 'Gitleaks: No secrets detected in repository'
+                    } else {
+                        echo 'Gitleaks detected potential secrets - review report'
+                    }
+                }
+            }
+        }
+        
         stage('Quality Gate - Semgrep SAST') {
             steps {
                 echo 'Running Semgrep SAST scanning...'
@@ -130,6 +158,29 @@ pipeline {
                     """
                     
                     echo 'Checkov Dockerfile scan completed'
+                }
+            }
+        }
+        
+        stage('Quality Gate - SonarQube') {
+            steps {
+                echo 'Running SonarQube code quality analysis...'
+                script {
+                    withCredentials([
+                        string(credentialsId: 'SONARQUBE_TOKEN', variable: 'SONAR_TOKEN'),
+                        string(credentialsId: 'SONARQUBE_URL', variable: 'SONAR_HOST_URL')
+                    ]) {
+                        sh """
+                            docker run --rm \
+                                -v \$(pwd):/usr/src \
+                                -w /usr/src \
+                                -e SONAR_HOST_URL=\$SONAR_HOST_URL \
+                                -e SONAR_TOKEN=\$SONAR_TOKEN \
+                                sonarsource/sonar-scanner-cli:latest
+                        """
+                    }
+                    
+                    echo 'SonarQube analysis completed - check dashboard for results'
                 }
             }
         }
