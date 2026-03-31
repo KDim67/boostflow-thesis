@@ -288,7 +288,11 @@ function EmailActionHandlerContent() {
         )}
 
         {showPasswordForm && (
-          <form onSubmit={handlePasswordReset} className="mt-8 space-y-6">
+          <form
+            method="post"
+            onSubmit={handlePasswordReset}
+            className="mt-8 space-y-6"
+          >
             <div>
               <label
                 htmlFor="new-password"

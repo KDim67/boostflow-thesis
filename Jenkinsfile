@@ -1,13 +1,16 @@
 pipeline {
     agent any
     
+    options {
+        skipDefaultCheckout()
+    }
+
     environment {
         // Docker image configuration
         DOCKER_IMAGE = 'boostflow'
         GHCR_REGISTRY = 'ghcr.io'
         DOCKER_BUILDKIT = '1'
         GITHUB_USER = 'kdim67'
-        IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
         FULL_IMAGE_NAME = "${GHCR_REGISTRY}/${GITHUB_USER}/${DOCKER_IMAGE}"
         
         // Tool paths
@@ -15,17 +18,18 @@ pipeline {
         
         // Report directories
         REPORTS_DIR = 'security-reports'
+        
+        STAGING_URL = credentials('STAGING_URL')
     }
     
     stages {
         stage('Checkout') {
             steps {
                 echo 'Checking out source code...'
-                checkout scm
-                
                 script {
-                    // Get commit info for tagging
-                    env.GIT_COMMIT_SHORT = env.GIT_COMMIT.take(7)
+                    def scmVars = checkout scm
+                    env.GIT_COMMIT_SHORT = scmVars.GIT_COMMIT.take(7)
+                    env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
                     echo "Building commit: ${env.GIT_COMMIT_SHORT}"
                 }
             }
@@ -122,17 +126,15 @@ pipeline {
                                 --output security-reports/semgrep-report.sarif \
                                 --timeout 300 \
                                 --timeout-threshold 15 \
-                                src/ || true
+                                src/
                         ''',
                         returnStatus: true
                     )
 
-                    
-                    if (semgrepResult == 0) {
-                        echo 'Semgrep scan completed - no critical issues'
-                    } else {
-                        echo 'Semgrep found potential security issues - review report'
+                    if (semgrepResult != 0) {
+                        error 'Semgrep found potential security issues - check report'
                     }
+                    echo 'Semgrep scan completed - no critical issues'
                 }
             }
         }
@@ -151,7 +153,7 @@ pipeline {
                             --framework dockerfile \
                             --output json \
                             --output-file-path ${REPORTS_DIR} \
-                            --soft-fail || true
+                            --soft-fail
                         
                         # Rename the output file for clarity
                         mv ${REPORTS_DIR}/results_json.json ${REPORTS_DIR}/checkov-dockerfile.json 2>/dev/null || true
@@ -350,7 +352,7 @@ EOF
                             --format template \
                             --template '@/usr/local/share/trivy/templates/html.tpl' \
                             --output ${REPORTS_DIR}/trivy-report.html \
-                            ${REPORTS_DIR}/sbom-image.cyclonedx.json || true
+                            ${REPORTS_DIR}/sbom-image.cyclonedx.json
                     """
                     
                     // Display summaries
@@ -417,6 +419,123 @@ EOF
                 }
             }
         }
+        
+        stage('Update K8s Manifest') {
+            steps {
+                echo 'Updating Kubernetes manifest with new image tag...'
+                script {
+                    withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
+                        sh """
+                            git config user.email "jenkins@boostflow.me"
+                            git config user.name "Jenkins CI"
+                            
+                            sed -i 's|image: ${FULL_IMAGE_NAME}:.*|image: ${FULL_IMAGE_NAME}:${IMAGE_TAG}|' k8s/app-deployment.yaml
+                            
+                            git add k8s/app-deployment.yaml
+                            git commit -m "chore(k8s): update app image to ${IMAGE_TAG} [skip ci]"
+                            git push https://${GITHUB_USER}:\${GITHUB_TOKEN}@github.com/${GITHUB_USER}/boostflow-thesis.git HEAD:main
+                        """
+                    }
+                    
+                    echo "K8s manifest updated to ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
+                    echo 'ArgoCD will detect this change and deploy automatically.'
+                }
+            }
+        }
+        
+        stage('Wait for Staging Deployment') {
+            steps {
+                echo 'Waiting for ArgoCD to sync and staging deployment to be ready...'
+                script {
+                    sh """
+                        kubectl wait --for=condition=available deployment/boostflow-app \
+                            -n boostflow --timeout=300s
+                    """
+                    
+                    def retries = 30
+                    def ready = false
+                    for (int i = 0; i < retries; i++) {
+                        def result = sh(
+                            script: 'curl -skf ${STAGING_URL}/api/health || exit 1',
+                            returnStatus: true
+                        )
+                        if (result == 0) {
+                            ready = true
+                            break
+                        }
+                        sleep 10
+                    }
+                    
+                    if (!ready) {
+                        error 'Staging deployment health check failed after 5 minutes'
+                    }
+                    
+                    echo 'Staging deployment is healthy and ready for DAST scanning'
+                }
+            }
+        }
+        
+        stage('DAST - OWASP ZAP') {
+            steps {
+                echo 'Running OWASP ZAP baseline scan against staging...'
+                script {
+                    sh """
+                        mkdir -p ${REPORTS_DIR}
+                        chmod 777 ${REPORTS_DIR}
+                        docker run --rm \
+                            -v \$(pwd)/${REPORTS_DIR}:/zap/wrk:rw \
+                            --network host \
+                            ghcr.io/zaproxy/zaproxy:stable \
+                            zap-baseline.py \
+                            -t \${STAGING_URL} \
+                            -r zap-report.html \
+                            -J zap-report.json \
+                            -I
+                    """
+                    
+                    echo 'OWASP ZAP baseline scan completed - review report for findings'
+                }
+            }
+        }
+        
+        stage('DAST - Nuclei') {
+            steps {
+                echo 'Running Nuclei vulnerability scanning against staging...'
+                script {
+                    sh """
+                        docker run --rm \
+                            -v \$(pwd)/${REPORTS_DIR}:/output \
+                            --network host \
+                            projectdiscovery/nuclei:latest \
+                            -u \${STAGING_URL} \
+                            -stats \
+                            -severity medium,high,critical \
+                            -je /output/nuclei-report.json
+                    """
+                    
+                    echo 'Nuclei scan completed - review report for findings'
+                }
+            }
+        }
+        
+        stage('DAST - testssl.sh') {
+            steps {
+                echo 'Running testssl.sh TLS/SSL audit against staging...'
+                script {
+                    def targetHost = STAGING_URL.replaceAll('https?://', '')
+                    sh """
+                        docker run --rm \
+                            -v \$(pwd)/${REPORTS_DIR}:/output \
+                            --network host \
+                            drwetter/testssl.sh:latest \
+                            --jsonfile /output/testssl-report.json \
+                            ${targetHost}
+                    """
+                    
+                    echo 'testssl.sh audit completed - review report for findings'
+                }
+            }
+        }
     }
     
     post {
@@ -434,6 +553,15 @@ EOF
                 reportDir: "${REPORTS_DIR}",
                 reportFiles: 'trivy-report.html',
                 reportName: 'Trivy Vulnerability Report'
+            ])
+            
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: "${REPORTS_DIR}",
+                reportFiles: 'zap-report.html',
+                reportName: 'OWASP ZAP Report'
             ])
             
             echo 'Cleaning up workspace...'

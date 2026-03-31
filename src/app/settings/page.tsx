@@ -838,7 +838,11 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Change Email Section */}
-                <form onSubmit={handleEmailChange} className="space-y-6">
+                <form
+                  method="post"
+                  onSubmit={handleEmailChange}
+                  className="space-y-6"
+                >
                   <div>
                     <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
                       Change Email Address
@@ -905,7 +909,11 @@ export default function SettingsPage() {
                 </form>
 
                 {/* Change Password Section */}
-                <form onSubmit={handlePasswordChange} className="space-y-6">
+                <form
+                  method="post"
+                  onSubmit={handlePasswordChange}
+                  className="space-y-6"
+                >
                   <div>
                     <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
                       Change Password

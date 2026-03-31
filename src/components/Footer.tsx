@@ -48,7 +48,7 @@ const Footer = () => {
                 </svg>
               </a>
               <a
-                href="https://linkedin.com/company/boostflow"
+                href="https://instagram.com/boostflowifweactuallyhadone"
                 className="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
               >
                 <svg

@@ -40,7 +40,7 @@ export default function LoginForm() {
   };
 
   return (
-    <form className="space-y-6" onSubmit={handleSubmit}>
+    <form method="post" className="space-y-6" onSubmit={handleSubmit}>
       {successMessage && (
         <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg">
           {successMessage}

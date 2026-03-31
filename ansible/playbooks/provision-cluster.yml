@@ -1,0 +1,403 @@
+---
+- name: Provision BoostFlow Kubernetes Cluster
+  hosts: all
+  become: true
+  vars_files:
+    - ../group_vars/all.yml
+
+  tasks:
+    - name: Get actual non-root username
+      command: whoami
+      become: false
+      register: real_user
+      changed_when: false
+
+    - name: Disable swap (required by kubelet)
+      command: swapoff -a
+      changed_when: false
+
+    - name: Remove swap from fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: '\sswap\s'
+        state: absent
+
+    - name: Load required kernel modules
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Persist kernel modules across reboots
+      copy:
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          overlay
+          br_netfilter
+
+    - name: Set sysctl parameters for Kubernetes networking
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/k8s.conf
+        reload: true
+      loop:
+        - { key: net.bridge.bridge-nf-call-iptables, value: "1" }
+        - { key: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+        - { key: net.ipv4.ip_forward, value: "1" }
+
+    - name: Install required system packages
+      apt:
+        name:
+          - curl
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+          - containerd
+        state: present
+
+    - name: Create containerd config directory
+      file:
+        path: /etc/containerd
+        state: directory
+
+    - name: Generate default containerd config
+      shell: containerd config default > /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Ensure CRI plugin is not disabled in containerd
+      replace:
+        path: /etc/containerd/config.toml
+        regexp: 'disabled_plugins = \["cri"\]'
+        replace: "disabled_plugins = []"
+      register: cri_fix
+
+    - name: Enable SystemdCgroup in containerd
+      replace:
+        path: /etc/containerd/config.toml
+        regexp: "SystemdCgroup = false"
+        replace: "SystemdCgroup = true"
+      register: containerd_config
+
+    - name: Restart containerd after config change
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: true
+      when: containerd_config.changed or cri_fix.changed
+
+    - name: Enable and start containerd
+      systemd:
+        name: containerd
+        state: started
+        enabled: true
+
+    - name: Add Kubernetes apt signing key
+      shell: >
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/{{ kubernetes_version_repo }}/deb/Release.key
+        | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+
+    - name: Add Kubernetes apt repository
+      copy:
+        dest: /etc/apt/sources.list.d/kubernetes.list
+        content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ kubernetes_version_repo }}/deb/ /\n"
+
+    - name: Update apt cache
+      shell: apt-get update || true
+      changed_when: false
+
+    - name: Install kubeadm, kubelet, kubectl
+      apt:
+        name:
+          - kubelet={{ kubernetes_package_version }}
+          - kubeadm={{ kubernetes_package_version }}
+          - kubectl={{ kubernetes_package_version }}
+        state: present
+
+    - name: Hold Kubernetes packages at current version
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Check if cluster is already initialized
+      stat:
+        path: /etc/kubernetes/admin.conf
+      register: kubeadm_conf
+
+    - name: Initialize Kubernetes cluster with kubeadm
+      command: >
+        kubeadm init
+        --pod-network-cidr={{ pod_network_cidr }}
+        --kubernetes-version={{ kubernetes_version }}
+      when: not kubeadm_conf.stat.exists
+
+    - name: Create .kube directory for user
+      file:
+        path: "/home/{{ real_user.stdout }}/.kube"
+        state: directory
+        owner: "{{ real_user.stdout }}"
+        mode: "0755"
+
+    - name: Copy kubeconfig to user home
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ real_user.stdout }}/.kube/config"
+        remote_src: true
+        owner: "{{ real_user.stdout }}"
+        mode: "0644"
+
+    - name: Remove control-plane taint (single-node cluster)
+      command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+      changed_when: false
+      ignore_errors: true
+
+    - name: Install Calico CNI plugin
+      command: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/calico.yaml
+      changed_when: false
+
+    - name: Wait for all nodes to be Ready
+      command: kubectl get nodes
+      register: nodes_ready
+      retries: 20
+      delay: 10
+      until: "'NotReady' not in nodes_ready.stdout"
+
+    - name: Check if Helm is installed
+      command: helm version --short
+      register: helm_check
+      ignore_errors: true
+
+    - name: Install Helm
+      shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      when: helm_check.rc != 0
+
+    - name: Create application namespaces
+      command: "kubectl create namespace {{ item }}"
+      loop:
+        - "{{ app_namespace }}"
+        - "{{ monitoring_namespace }}"
+        - "{{ argocd_namespace }}"
+        - "{{ awx_namespace }}"
+      register: ns_result
+      failed_when: ns_result.rc != 0 and 'already exists' not in ns_result.stderr
+
+    - name: Apply Pod Security Standards to boostflow namespace
+      command: >
+        kubectl label namespace {{ app_namespace }}
+        pod-security.kubernetes.io/enforce=restricted
+        pod-security.kubernetes.io/audit=restricted
+        pod-security.kubernetes.io/warn=restricted
+        --overwrite
+
+    - name: Add Helm repositories
+      command: "helm repo add {{ item.key }} {{ item.value }}"
+      loop:
+        - { key: ingress-nginx, value: "{{ helm_charts.ingress_nginx.repo }}" }
+        - { key: argo, value: "{{ helm_charts.argocd.repo }}" }
+        - { key: awx-operator, value: "{{ helm_charts.awx_operator.repo }}" }
+      register: repo_result
+      changed_when: "'has been added' in repo_result.stdout"
+
+    - name: Update Helm repositories
+      command: helm repo update
+
+    - name: Check if ingress-nginx is installed
+      command: helm status ingress-nginx -n {{ helm_charts.ingress_nginx.namespace }}
+      register: nginx_status
+      ignore_errors: true
+
+    - name: Install NGINX Ingress Controller
+      command: >
+        helm install ingress-nginx ingress-nginx/ingress-nginx
+        --namespace {{ helm_charts.ingress_nginx.namespace }}
+        --create-namespace
+        --version {{ helm_charts.ingress_nginx.version }}
+        --set controller.admissionWebhooks.enabled=false
+        --timeout 10m
+      when: nginx_status.rc != 0
+
+    - name: Check if ArgoCD is installed
+      command: helm status argocd -n {{ argocd_namespace }}
+      register: argocd_status
+      ignore_errors: true
+
+    - name: Install ArgoCD
+      command: >
+        helm install argocd argo/argo-cd
+        --namespace {{ argocd_namespace }}
+        --version {{ helm_charts.argocd.version }}
+      when: argocd_status.rc != 0
+
+    - name: Wait for ArgoCD server to be ready
+      command: >
+        kubectl wait --for=condition=available deployment/argocd-server
+        -n {{ argocd_namespace }} --timeout=120s
+      when: argocd_status.rc != 0
+
+    - name: Check if AWX Operator is installed
+      command: helm status awx-operator -n {{ awx_namespace }}
+      register: awx_operator_status
+      ignore_errors: true
+
+    - name: Install AWX Operator
+      command: >
+        helm install awx-operator awx-operator/awx-operator
+        --namespace {{ awx_namespace }}
+        --version {{ helm_charts.awx_operator.version }}
+        --set kube_rbac_proxy.image=quay.io/brancz/kube-rbac-proxy:v0.15.0
+      when: awx_operator_status.rc != 0
+
+    - name: Wait for AWX Operator to be ready
+      command: >
+        kubectl wait --for=condition=available deployment/awx-operator-controller-manager
+        -n {{ awx_namespace }} --timeout=120s
+      when: awx_operator_status.rc != 0
+
+    - name: Check if AWX instance exists
+      command: kubectl get awx boostflow-awx -n {{ awx_namespace }}
+      register: awx_instance_check
+      ignore_errors: true
+
+    - name: Create AWX instance
+      shell: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: awx.ansible.com/v1beta1
+        kind: AWX
+        metadata:
+          name: boostflow-awx
+          namespace: {{ awx_namespace }}
+        spec:
+          service_type: ClusterIP
+          projects_persistence: false
+          redis_resource_requirements:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 512Mi
+          web_resource_requirements:
+            requests:
+              cpu: 100m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          task_resource_requirements:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+        EOF
+      when: awx_instance_check.rc != 0
+
+    - name: Check if GHCR pull secret exists
+      command: kubectl get secret ghcr-pull-secret -n {{ app_namespace }}
+      register: ghcr_secret_check
+      ignore_errors: true
+
+    - name: Create GHCR image pull secret
+      command: >
+        kubectl create secret docker-registry ghcr-pull-secret
+        --namespace {{ app_namespace }}
+        --docker-server={{ ghcr_registry }}
+        --docker-username={{ ghcr_username }}
+        --docker-password={{ ghcr_pat }}
+      when: ghcr_secret_check.rc != 0
+      no_log: true
+
+    - name: Check if app secrets exist
+      command: kubectl get secret boostflow-app-secret -n {{ app_namespace }}
+      register: app_secret_check
+      ignore_errors: true
+
+    - name: Create application secrets
+      command: >
+        kubectl create secret generic boostflow-app-secret
+        --namespace {{ app_namespace }}
+        --from-literal=FIREBASE_SERVICE_ACCOUNT_KEY={{ firebase_service_account_key }}
+        --from-literal=GEMINI_API_KEY={{ gemini_api_key }}
+        --from-literal=GOOGLE_CLIENT_ID={{ google_client_id }}
+        --from-literal=GOOGLE_CLIENT_SECRET={{ google_client_secret }}
+        --from-literal=GITHUB_CLIENT_ID={{ github_client_id }}
+        --from-literal=GITHUB_CLIENT_SECRET={{ github_client_secret }}
+        --from-literal=MINIO_ENDPOINT=minio.{{ app_namespace }}.svc.cluster.local:9000
+        --from-literal=MINIO_EXTERNAL_ENDPOINT={{ minio_external_endpoint }}
+        --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
+        --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
+        --from-literal=MINIO_USE_SSL=false
+        --from-literal=SENDGRID_API_KEY={{ sendgrid_api_key }}
+        --from-literal=DEFAULT_FROM_EMAIL={{ default_from_email }}
+        --from-literal=NODE_ENV=production
+      when: app_secret_check.rc != 0
+      no_log: true
+
+    - name: Check if MinIO secret exists
+      command: kubectl get secret minio-secret -n {{ app_namespace }}
+      register: minio_secret_check
+      ignore_errors: true
+
+    - name: Create MinIO secret
+      command: >
+        kubectl create secret generic minio-secret
+        --namespace {{ app_namespace }}
+        --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
+        --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
+      when: minio_secret_check.rc != 0
+      no_log: true
+
+    - name: Apply ArgoCD AppProject and Applications
+      command: kubectl apply -f {{ item }}
+      loop:
+        - k8s/argocd/project-boostflow.yaml
+        - k8s/argocd/app-boostflow.yaml
+      args:
+        chdir: "{{ playbook_dir }}/../../"
+
+    - name: Display ArgoCD initial admin password
+      shell: >
+        kubectl -n {{ argocd_namespace }} get secret argocd-initial-admin-secret
+        -o jsonpath="{.data.password}" | base64 -d
+      register: argocd_password
+      changed_when: false
+
+    - name: Display AWX admin password
+      shell: >
+        kubectl -n {{ awx_namespace }} get secret boostflow-awx-admin-password
+        -o jsonpath="{.data.password}" | base64 -d
+      register: awx_password
+      changed_when: false
+      ignore_errors: true
+
+    - name: Show post-install information
+      debug:
+        msg:
+          - "Cluster provisioned successfully!"
+          - ""
+          - "--- ArgoCD ---"
+          - "Username: admin"
+          - "Password: {{ argocd_password.stdout }}"
+          - "UI: kubectl port-forward svc/argocd-server -n {{ argocd_namespace }} 8080:443"
+          - ""
+          - "--- AWX ---"
+          - "Username: admin"
+          - "Password: {{ awx_password.stdout | default('AWX is still initializing — re-run this task later') }}"
+          - "UI: kubectl port-forward svc/boostflow-awx-service -n {{ awx_namespace }} 8081:80"
+          - ""
+          - "ArgoCD will now sync the k8s/ manifests from Git automatically."
+          - "Import this Git repo into AWX as a Project to manage future playbook runs via the web UI."
+
+  handlers:
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted

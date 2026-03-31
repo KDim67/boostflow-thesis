@@ -93,7 +93,7 @@ export default function SignupForm() {
   };
 
   return (
-    <form className="space-y-6" onSubmit={handleSubmit}>
+    <form method="post" className="space-y-6" onSubmit={handleSubmit}>
       {errorMessage && (
         <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
           {errorMessage}

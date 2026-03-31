@@ -47,7 +47,7 @@ export default function ContactPage() {
             {/* Contact Form */}
             <div>
               <h2 className="text-2xl font-bold mb-6">Send Us a Message</h2>
-              <form className="space-y-6">
+              <form method="post" className="space-y-6">
                 <div>
                   <label
                     htmlFor="name"
