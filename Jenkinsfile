@@ -164,6 +164,42 @@ pipeline {
             }
         }
         
+        stage('Quality Gate - OPA/Conftest') {
+            steps {
+                echo 'Running OPA/Conftest policy checks...'
+                script {
+                    sh """
+                        docker run --rm \\
+                            -v \$(pwd):/project \\
+                            -w /project \\
+                            openpolicyagent/conftest:latest \\
+                            test Dockerfile --policy policies/ \\
+                            --parser dockerfile \\
+                            --output json > ${REPORTS_DIR}/conftest-dockerfile.json
+                    """
+                    echo 'Conftest Dockerfile policy check passed'
+
+                    sh """
+                        rm -rf boostflow-thesis-config
+                        git clone https://github.com/${GITHUB_USER}/boostflow-thesis-config.git boostflow-thesis-config
+                    """
+
+                    sh """
+                        docker run --rm \\
+                            -v \$(pwd):/project \\
+                            -w /project \\
+                            openpolicyagent/conftest:latest \\
+                            test boostflow-thesis-config/app-deployment.yaml boostflow-thesis-config/minio-statefulset.yaml \\
+                            --policy policies/ \\
+                            --output json > ${REPORTS_DIR}/conftest-k8s.json
+                    """
+                    echo 'Conftest Kubernetes policy check passed'
+
+                    sh 'rm -rf boostflow-thesis-config'
+                }
+            }
+        }
+        
         stage('Quality Gate - Tests') {
             steps {
                 echo 'Running unit tests with coverage...'
@@ -422,21 +458,28 @@ EOF
         
         stage('Update K8s Manifest') {
             steps {
-                echo 'Updating Kubernetes manifest with new image tag...'
+                echo 'Updating Kubernetes manifest in config repo...'
                 script {
                     withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
                         sh """
+                            rm -rf boostflow-thesis-config
+                            git clone https://${GITHUB_USER}:\${GITHUB_TOKEN}@github.com/${GITHUB_USER}/boostflow-thesis-config.git boostflow-thesis-config
+
+                            cd boostflow-thesis-config
                             git config user.email "jenkins@boostflow.me"
                             git config user.name "Jenkins CI"
-                            
-                            sed -i 's|image: ${FULL_IMAGE_NAME}:.*|image: ${FULL_IMAGE_NAME}:${IMAGE_TAG}|' k8s/app-deployment.yaml
-                            
-                            git add k8s/app-deployment.yaml
-                            git commit -m "chore(k8s): update app image to ${IMAGE_TAG} [skip ci]"
-                            git push https://${GITHUB_USER}:\${GITHUB_TOKEN}@github.com/${GITHUB_USER}/boostflow-thesis.git HEAD:main
+
+                            sed -i 's|image: ${FULL_IMAGE_NAME}:.*|image: ${FULL_IMAGE_NAME}:${IMAGE_TAG}|' app-deployment.yaml
+
+                            git add app-deployment.yaml
+                            git commit -m "deploy: ${IMAGE_TAG}"
+                            git push origin main
+
+                            cd ..
+                            rm -rf boostflow-thesis-config
                         """
                     }
-                    
+
                     echo "K8s manifest updated to ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
                     echo 'ArgoCD will detect this change and deploy automatically.'
                 }
