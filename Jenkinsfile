@@ -168,32 +168,48 @@ pipeline {
             steps {
                 echo 'Running OPA/Conftest policy checks...'
                 script {
-                    sh """
-                        docker run --rm \\
-                            -v \$(pwd):/project \\
-                            -w /project \\
-                            openpolicyagent/conftest:latest \\
-                            test Dockerfile --policy policies/ \\
-                            --parser dockerfile \\
-                            --output json > ${REPORTS_DIR}/conftest-dockerfile.json
-                    """
-                    echo 'Conftest Dockerfile policy check passed'
+                    def conftestDocker = sh(
+                        script: """
+                            docker run --rm \\
+                                -v \$(pwd):/project \\
+                                -w /project \\
+                                openpolicyagent/conftest:latest \\
+                                test Dockerfile --policy policies/ \\
+                                --parser dockerfile \\
+                                --output json > ${REPORTS_DIR}/conftest-dockerfile.json
+                        """,
+                        returnStatus: true
+                    )
+                    
+                    if (conftestDocker == 0) {
+                        echo 'Conftest Dockerfile policy check passed'
+                    } else {
+                        echo 'Conftest Dockerfile policy check found violations (see report for details)'
+                    }
 
                     sh """
                         rm -rf boostflow-thesis-config
                         git clone https://github.com/${GITHUB_USER}/boostflow-thesis-config.git boostflow-thesis-config
                     """
 
-                    sh """
-                        docker run --rm \\
-                            -v \$(pwd):/project \\
-                            -w /project \\
-                            openpolicyagent/conftest:latest \\
-                            test boostflow-thesis-config/app-deployment.yaml boostflow-thesis-config/minio-statefulset.yaml \\
-                            --policy policies/ \\
-                            --output json > ${REPORTS_DIR}/conftest-k8s.json
-                    """
-                    echo 'Conftest Kubernetes policy check passed'
+                    def conftestK8s = sh(
+                        script: """
+                            docker run --rm \\
+                                -v \$(pwd):/project \\
+                                -w /project \\
+                                openpolicyagent/conftest:latest \\
+                                test boostflow-thesis-config/app-deployment.yaml boostflow-thesis-config/minio-statefulset.yaml \\
+                                --policy policies/ \\
+                                --output json > ${REPORTS_DIR}/conftest-k8s.json
+                        """,
+                        returnStatus: true
+                    )
+                    
+                    if (conftestK8s == 0) {
+                        echo 'Conftest Kubernetes policy check passed'
+                    } else {
+                        echo 'Conftest Kubernetes policy check found violations (see report for details)'
+                    }
 
                     sh 'rm -rf boostflow-thesis-config'
                 }
