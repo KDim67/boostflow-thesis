@@ -187,10 +187,12 @@ pipeline {
                         echo 'Conftest Dockerfile policy check found violations (see report for details)'
                     }
 
-                    sh """
-                        rm -rf boostflow-thesis-config
-                        git clone https://github.com/${GITHUB_USER}/boostflow-thesis-config.git boostflow-thesis-config
-                    """
+                    withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
+                        sh """
+                            rm -rf boostflow-thesis-config
+                            git clone https://${GITHUB_USER}:\${GITHUB_TOKEN}@github.com/${GITHUB_USER}/boostflow-thesis-config.git boostflow-thesis-config
+                        """
+                    }
 
                     def conftestK8s = sh(
                         script: """
