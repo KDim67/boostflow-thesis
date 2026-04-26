@@ -518,8 +518,9 @@ EOF
                     def retries = 30
                     def ready = false
                     for (int i = 0; i < retries; i++) {
+                        sh 'echo "Attempting to curl ${STAGING_URL}/api/health..."'
                         def result = sh(
-                            script: 'curl -skf --connect-timeout 10 ${STAGING_URL}/api/health || exit 1',
+                            script: 'curl -kvf --connect-timeout 10 ${STAGING_URL}/api/health',
                             returnStatus: true
                         )
                         if (result == 0) {
