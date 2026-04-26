@@ -508,16 +508,18 @@ EOF
             steps {
                 echo 'Waiting for ArgoCD to sync and staging deployment to be ready...'
                 script {
+                    sleep 30
+
                     sh """
-                        kubectl wait --for=condition=available deployment/boostflow-app \
+                        kubectl rollout status deployment/boostflow-app \
                             -n boostflow --timeout=300s
                     """
-                    
+
                     def retries = 30
                     def ready = false
                     for (int i = 0; i < retries; i++) {
                         def result = sh(
-                            script: 'curl -skf ${STAGING_URL}/api/health || exit 1',
+                            script: 'curl -skf --connect-timeout 10 ${STAGING_URL}/api/health || exit 1',
                             returnStatus: true
                         )
                         if (result == 0) {
@@ -526,11 +528,11 @@ EOF
                         }
                         sleep 10
                     }
-                    
+
                     if (!ready) {
                         error 'Staging deployment health check failed after 5 minutes'
                     }
-                    
+
                     echo 'Staging deployment is healthy and ready for DAST scanning'
                 }
             }
