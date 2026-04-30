@@ -21,6 +21,7 @@ const config = {
     "src/lib/api/authHelper.ts",
     "src/lib/api/uploadHelper.ts",
     "src/lib/utils/logger.ts",
+    "src/proxy.ts",
   ],
   coverageProvider: "v8",
   coverageReporters: ["lcov", "text", "text-summary"],
