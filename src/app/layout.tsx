@@ -1,4 +1,4 @@
-"use client";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { FirebaseProvider } from "@/lib/firebase/FirebaseProvider";
@@ -23,11 +23,13 @@ const geistMono = Geist_Mono({
  * Provides global styling, font configuration, and essential providers
  * @param children - The page content to be rendered
  */
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  await headers();
+
   return (
     // Apply font variables to the entire document
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>

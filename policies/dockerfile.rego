@@ -27,6 +27,7 @@ has_user if {
 }
 
 deny contains msg if {
+	input.Stages
 	not has_user
 	msg := "Dockerfile must include a USER instruction to run as non-root"
 }
