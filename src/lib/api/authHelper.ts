@@ -7,14 +7,17 @@ export function validateOrigin(request: NextRequest): boolean {
   const referer = request.headers.get("referer");
 
   // Determine allowed origins dynamically based on env or hardcode for strictness
-  const allowedOrigins = ["https://boostflow.me", "http://localhost:3000"];
+  const allowedOrigins = new Set([
+    "https://boostflow.me",
+    "http://localhost:3000",
+  ]);
 
   // Exact matching strategy
   const isAllowed = (url: string | null) => {
     if (!url) return false;
     try {
       const urlObj = new URL(url);
-      return allowedOrigins.includes(urlObj.origin);
+      return allowedOrigins.has(urlObj.origin);
     } catch {
       return false; // Malformed URL
     }
