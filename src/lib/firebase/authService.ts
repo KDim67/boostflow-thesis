@@ -141,12 +141,9 @@ export const getCurrentUser = (): User | null => {
 };
 
 /**
- * Authenticates user with Google OAuth using popup flow
- *
- * Opens a popup window for Google sign-in.
+ * Authenticates user with Google OAuth using popup flow.
  *
  * @returns Promise resolving to UserCredential with user info and auth tokens
- *
  * @throws FirebaseError if OAuth flow fails (popup blocked, user cancels, etc.)
  */
 export const signInWithGoogle = async (): Promise<UserCredential> => {
@@ -154,7 +151,7 @@ export const signInWithGoogle = async (): Promise<UserCredential> => {
     return await signInWithPopup(auth, googleProvider);
   } catch (error) {
     console.error("Error signing in with Google:", error);
-    throw error; // Common errors: popup blocked, user cancelled, network issues
+    throw error;
   }
 };
 

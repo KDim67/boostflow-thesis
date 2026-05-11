@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/firebase/useAuth";
 import { syncUserProfile } from "@/lib/firebase/userProfileService";
+import CsrfHiddenInput from "@/components/CsrfHiddenInput";
 
 /**
  * SignupForm component handles user registration with email/password authentication
@@ -94,6 +95,7 @@ export default function SignupForm() {
 
   return (
     <form method="post" className="space-y-6" onSubmit={handleSubmit}>
+      <CsrfHiddenInput />
       {errorMessage && (
         <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
           {errorMessage}

@@ -32,7 +32,7 @@ RUN --mount=type=secret,id=build_env \
     # 1. Copy secret to .env.production so Next.js can read it
     cp /run/secrets/build_env .env.production && \
     # 2. Run the build
-    npm run build && \
+    NODE_OPTIONS=--max-old-space-size=2048 npm run build && \
     # 3. Remove the env file from source
     rm -f .env.production && \
     # 4. Remove any .env files that may have been copied to standalone output
@@ -62,12 +62,11 @@ COPY --from=builder --chown=65532:65532 /app/package-lock.json ./package-lock.js
 # Use non-root user for security
 USER 65532
 
-# Healthcheck using Node.js since distroless has no shell
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD ["/nodejs/bin/node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-
 # Expose port for Next.js
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
 
 # Start Next.js application
 CMD ["server.js"]

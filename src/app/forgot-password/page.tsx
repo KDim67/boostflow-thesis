@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { resetPassword } from "@/lib/firebase/authService";
+import CsrfHiddenInput from "@/components/CsrfHiddenInput";
 
 /**
  * Forgot Password Page Component
@@ -163,7 +164,12 @@ export default function ForgotPasswordPage() {
                   </button>
                 </div>
               ) : (
-                <form className="space-y-6" onSubmit={handleSubmit}>
+                <form
+                  method="post"
+                  className="space-y-6"
+                  onSubmit={handleSubmit}
+                >
+                  <CsrfHiddenInput />
                   <div>
                     <label
                       htmlFor="email"

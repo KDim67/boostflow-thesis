@@ -195,10 +195,7 @@ function EmailActionHandlerContent() {
 
       // Redirect to login page after 3 seconds
       setTimeout(() => {
-        const baseUrl =
-          process.env.NEXT_PUBLIC_APP_URL || "https://boostflow.me";
-        const redirectUrl = `${baseUrl}/login?passwordReset=true`;
-        globalThis.location.href = redirectUrl;
+        router.push("/login?passwordReset=true");
       }, 3000);
     } catch (error: unknown) {
       const err = error as { message?: string };

@@ -157,20 +157,15 @@ This project is a Next.js application with a Firebase backend and modern web tec
    # Firebase Service Account (Server-side only)
    FIREBASE_SERVICE_ACCOUNT_KEY=your_firebase_service_account_json
 
-   # OAuth Configuration
+   # OAuth Client IDs (used client-side for OAuth redirects)
    NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_client_id
-   NEXT_PUBLIC_GOOGLE_CLIENT_SECRET=your_google_client_secret
    NEXT_PUBLIC_GITHUB_CLIENT_ID=your_github_client_id
-   NEXT_PUBLIC_GITHUB_CLIENT_SECRET=your_github_client_secret
 
-   # Server-side OAuth secrets (not exposed to client)
-   GOOGLE_CLIENT_SECRET=your_google_client_secret
-   GITHUB_CLIENT_SECRET=your_github_client_secret
+   # OAuth Secrets (Server-side only)
    GOOGLE_CLIENT_ID=your_google_client_id
+   GOOGLE_CLIENT_SECRET=your_google_client_secret
    GITHUB_CLIENT_ID=your_github_client_id
-
-   # General OAuth Configuration
-   NEXT_PUBLIC_OAUTH_CLIENT_ID=your_oauth_client_id
+   GITHUB_CLIENT_SECRET=your_github_client_secret
 
    # MinIO Configuration
    MINIO_ENDPOINT=your_minio_endpoint
@@ -187,10 +182,12 @@ This project is a Next.js application with a Firebase backend and modern web tec
    # Email Configuration (Development - MailHog)
    MAILHOG_HOST=localhost
    MAILHOG_PORT=1025
-   DEFAULT_FROM_EMAIL=noreply@yourdomain.com
 
    # Email Configuration (Production - SendGrid)
    SENDGRID_API_KEY=your_sendgrid_api_key
+
+   # Email General
+   EMAIL_PROVIDER=mailhog
    DEFAULT_FROM_EMAIL=noreply@yourdomain.com
 
    # Application Configuration

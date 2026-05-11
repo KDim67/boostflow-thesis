@@ -60,13 +60,11 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   // Subscribe to authentication state changes on component mount
   useEffect(() => {
-    // Set up listener for Firebase auth state changes
     const unsubscribe = subscribeToAuthChanges((user) => {
-      setUser(user); // Update user state when auth state changes
-      setLoading(false); // Auth state is now determined
+      setUser(user);
+      setLoading(false);
     });
 
-    // Cleanup subscription on component unmount
     return () => unsubscribe();
   }, []);
 
@@ -154,7 +152,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       setError(null);
       const userCredential = await signInWithGoogle();
 
-      // Sync user profile data after successful Google login
       if (userCredential.user) {
         await syncUserProfile(userCredential.user);
       }
@@ -164,9 +161,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to sign in with Google";
       setError(errorMessage);
-      throw err; // Re-throw to allow component-level error handling
+      throw err;
     } finally {
-      setLoading(false); // Always reset loading state
+      setLoading(false);
     }
   }, []);
 

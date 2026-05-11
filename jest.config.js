@@ -26,6 +26,21 @@ const config = {
   coverageProvider: "v8",
   coverageReporters: ["lcov", "text", "text-summary"],
   coverageDirectory: "coverage",
+  reporters: [
+    "default",
+    [
+      "jest-junit",
+      {
+        outputDirectory: "coverage",
+        outputName: "junit.xml",
+        ancestorSeparator: " › ",
+        uniqueOutputName: "false",
+        suiteNameTemplate: "{filepath}",
+        classNameTemplate: "{classname}",
+        titleTemplate: "{title}",
+      },
+    ],
+  ],
 };
 
 module.exports = config;

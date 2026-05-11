@@ -3,6 +3,10 @@ pipeline {
     
     options {
         skipDefaultCheckout()
+        timeout(time: 1, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
+        disableConcurrentBuilds()
+        timestamps()
     }
 
     environment {
@@ -12,7 +16,14 @@ pipeline {
         DOCKER_BUILDKIT = '1'
         GITHUB_USER = 'kdim67'
         FULL_IMAGE_NAME = "${GHCR_REGISTRY}/${GITHUB_USER}/${DOCKER_IMAGE}"
-        
+
+        // Pinned scanner image versions
+        GITLEAKS_IMAGE   = 'zricethezav/gitleaks:v8.21.2'
+        SEMGREP_IMAGE    = 'returntocorp/semgrep:1.95.0'
+        CHECKOV_IMAGE    = 'bridgecrew/checkov:3.2.256'
+        CONFTEST_IMAGE   = 'openpolicyagent/conftest:v0.56.0'
+        SONAR_IMAGE      = 'sonarsource/sonar-scanner-cli:11.1'
+
         // Tool paths
         PATH = "/usr/local/bin:${env.PATH}"
         
@@ -25,6 +36,8 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+                echo 'Cleaning workspace from previous builds...'
+                cleanWs()
                 echo 'Checking out source code...'
                 script {
                     def scmVars = checkout scm
@@ -36,6 +49,7 @@ pipeline {
         }
         
         stage('Install Dependencies') {
+            options { timeout(time: 10, unit: 'MINUTES') }
             steps {
                 echo 'Installing npm dependencies...'
                 sh '''
@@ -52,24 +66,26 @@ pipeline {
                 script {
                     // Clean and create reports directory (removes old files)
                     sh "rm -rf ${REPORTS_DIR} && mkdir -p ${REPORTS_DIR}"
-                    
-                    // Run npm audit and save report
-                    def auditResult = sh(
-                        script: 'npm audit --audit-level=high --json > ${REPORTS_DIR}/npm-audit.json',
+
+                    // Save full JSON report
+                    sh 'npm audit --json > ${REPORTS_DIR}/npm-audit.json || true'
+
+                    // Fail on CRITICAL
+                    def criticalResult = sh(
+                        script: 'npm audit --audit-level=critical',
                         returnStatus: true
                     )
-                    
-                    // Check if there are high/critical vulnerabilities
-                    def auditSummary = sh(
-                        script: 'npm audit --audit-level=high || true',
-                        returnStdout: true
+                    if (criticalResult != 0) {
+                        error 'CRITICAL vulnerabilities detected in dependencies - build blocked'
+                    }
+
+                    // Unstable on HIGH
+                    def highResult = sh(
+                        script: 'npm audit --audit-level=high',
+                        returnStatus: true
                     )
-                    
-                    echo "Audit Summary:\n${auditSummary}"
-                    
-                    // Fail if critical/high vulnerabilities found
-                    if (auditResult != 0) {
-                        echo 'Warning: High/Critical vulnerabilities found in dependencies'
+                    if (highResult != 0) {
+                        unstable 'HIGH vulnerabilities detected in dependencies (review npm-audit.json)'
                     } else {
                         echo 'No high/critical vulnerabilities found'
                     }
@@ -84,14 +100,16 @@ pipeline {
                     def gitleaksResult = sh(
                         script: """
                             docker run --rm \
-                                -v \$(pwd):/repo \
+                                --memory=1g --memory-swap=1g \
+                                -v \$(pwd):/repo:ro \
+                                -v \$(pwd)/${REPORTS_DIR}:/reports \
                                 -w /repo \
-                                zricethezav/gitleaks:latest \
+                                ${GITLEAKS_IMAGE} \
                                 detect \
                                 --source /repo \
                                 --report-format sarif \
-                                --report-path /repo/${REPORTS_DIR}/gitleaks-report.sarif \
-                                --no-git
+                                --report-path /reports/gitleaks-report.sarif \
+                                --redact
                         """,
                         returnStatus: true
                     )
@@ -99,35 +117,45 @@ pipeline {
                     if (gitleaksResult == 0) {
                         echo 'Gitleaks: No secrets detected in repository'
                     } else {
-                        echo 'Gitleaks detected potential secrets - review report'
+                        error 'Gitleaks detected secrets in repository - build blocked (see gitleaks-report.sarif)'
                     }
                 }
             }
         }
         
         stage('Quality Gate - Semgrep SAST') {
+            options { timeout(time: 15, unit: 'MINUTES') }
             steps {
                 echo 'Running Semgrep SAST scanning...'
                 script {
                     // Run Semgrep with targeted rulesets for Next.js/TypeScript
                     def semgrepResult = sh(
-                        script: '''
+                        script: """
                             docker run --rm \
-                                -v $(pwd):/src \
+                                --memory=1g --memory-swap=1g \
+                                -v \$(pwd):/src:ro \
+                                -v \$(pwd)/${REPORTS_DIR}:/reports \
                                 -w /src \
-                                returntocorp/semgrep:latest \
+                                ${SEMGREP_IMAGE} \
                                 semgrep \
                                 --config p/typescript \
                                 --config p/javascript \
                                 --config p/react \
                                 --config p/security-audit \
                                 --config p/secrets \
+                                --exclude node_modules \
+                                --exclude .next \
+                                --exclude coverage \
+                                --exclude public \
+                                --exclude '*.test.ts' \
+                                --exclude '*.test.tsx' \
                                 --sarif \
-                                --output security-reports/semgrep-report.sarif \
+                                --output /reports/semgrep-report.sarif \
                                 --timeout 300 \
                                 --timeout-threshold 15 \
+                                --jobs 1 \
                                 src/
-                        ''',
+                        """,
                         returnStatus: true
                     )
 
@@ -146,20 +174,29 @@ pipeline {
                     // Scan Dockerfile with explicit framework
                     sh """
                         docker run --rm \
-                            -v \$(pwd):/tf \
+                            --memory=1g --memory-swap=1g \
+                            -v \$(pwd)/Dockerfile:/tf/Dockerfile:ro \
+                            -v \$(pwd)/${REPORTS_DIR}:/tf/${REPORTS_DIR} \
                             -w /tf \
-                            bridgecrew/checkov:latest \
+                            ${CHECKOV_IMAGE} \
                             --file Dockerfile \
                             --framework dockerfile \
                             --output json \
                             --output-file-path ${REPORTS_DIR} \
                             --soft-fail
-                        
-                        # Rename the output file for clarity
+
                         mv ${REPORTS_DIR}/results_json.json ${REPORTS_DIR}/checkov-dockerfile.json 2>/dev/null || true
                     """
-                    
-                    echo 'Checkov Dockerfile scan completed'
+
+                    def failedCount = sh(
+                        script: "jq '.summary.failed // 0' ${REPORTS_DIR}/checkov-dockerfile.json 2>/dev/null || echo 0",
+                        returnStdout: true
+                    ).trim()
+                    if (failedCount.isInteger() && failedCount.toInteger() > 0) {
+                        error "Checkov detected ${failedCount} Dockerfile policy violations - build blocked (see checkov-dockerfile.json)"
+                    } else {
+                        echo 'Checkov Dockerfile scan completed - no violations'
+                    }
                 }
             }
         }
@@ -171,9 +208,10 @@ pipeline {
                     def conftestDocker = sh(
                         script: """
                             docker run --rm \\
-                                -v \$(pwd):/project \\
+                                --memory=512m --memory-swap=512m \\
+                                -v \$(pwd):/project:ro \\
                                 -w /project \\
-                                openpolicyagent/conftest:latest \\
+                                ${CONFTEST_IMAGE} \\
                                 test Dockerfile --policy policies/ \\
                                 --parser dockerfile \\
                                 --output json > ${REPORTS_DIR}/conftest-dockerfile.json
@@ -184,7 +222,7 @@ pipeline {
                     if (conftestDocker == 0) {
                         echo 'Conftest Dockerfile policy check passed'
                     } else {
-                        echo 'Conftest Dockerfile policy check found violations (see report for details)'
+                        unstable 'Conftest Dockerfile policy violations detected (see conftest-dockerfile.json)'
                     }
 
                     withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
@@ -197,9 +235,10 @@ pipeline {
                     def conftestK8s = sh(
                         script: """
                             docker run --rm \\
-                                -v \$(pwd):/project \\
+                                --memory=512m --memory-swap=512m \\
+                                -v \$(pwd):/project:ro \\
                                 -w /project \\
-                                openpolicyagent/conftest:latest \\
+                                ${CONFTEST_IMAGE} \\
                                 test boostflow-thesis-config/app-deployment.yaml boostflow-thesis-config/minio-statefulset.yaml \\
                                 --policy policies/ \\
                                 --output json > ${REPORTS_DIR}/conftest-k8s.json
@@ -210,7 +249,7 @@ pipeline {
                     if (conftestK8s == 0) {
                         echo 'Conftest Kubernetes policy check passed'
                     } else {
-                        echo 'Conftest Kubernetes policy check found violations (see report for details)'
+                        unstable 'Conftest Kubernetes policy violations detected (see conftest-k8s.json)'
                     }
 
                     sh 'rm -rf boostflow-thesis-config'
@@ -221,11 +260,12 @@ pipeline {
         stage('Quality Gate - Tests') {
             steps {
                 echo 'Running unit tests with coverage...'
-                sh 'npm run test:coverage -- --ci'
+                sh 'npm run test:coverage -- --ci --runInBand'
             }
         }
         
         stage('Quality Gate - SonarQube') {
+            options { timeout(time: 15, unit: 'MINUTES') }
             steps {
                 echo 'Running SonarQube code quality analysis...'
                 script {
@@ -235,11 +275,14 @@ pipeline {
                     ]) {
                         sh """
                             docker run --rm \
-                                -v \$(pwd):/usr/src \
+                                --memory=2g --memory-swap=2g \
+                                -v \$(pwd):/usr/src:ro \
+                                -v sonar-scanner-cache:/opt/sonar-scanner/.sonar/cache \
                                 -w /usr/src \
                                 -e SONAR_HOST_URL=\$SONAR_HOST_URL \
                                 -e SONAR_TOKEN=\$SONAR_TOKEN \
-                                sonarsource/sonar-scanner-cli:latest
+                                -e SONAR_SCANNER_JAVA_OPTS='-Xmx768m' \
+                                ${SONAR_IMAGE}
                         """
                     }
                     
@@ -249,6 +292,7 @@ pipeline {
         }
         
         stage('Build Docker Image') {
+            options { timeout(time: 20, unit: 'MINUTES') }
             steps {
                 echo "Building Docker image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
                 script {
@@ -285,10 +329,21 @@ pipeline {
                         string(credentialsId: 'MAILHOG_PORT', variable: 'MAILHOG_PORT'),
                         string(credentialsId: 'DEFAULT_FROM_EMAIL', variable: 'DEFAULT_FROM_EMAIL'),
                         string(credentialsId: 'SENDGRID_API_KEY', variable: 'SENDGRID_API_KEY'),
-                        string(credentialsId: 'NODE_ENV', variable: 'NODE_ENV')
+                        string(credentialsId: 'NODE_ENV', variable: 'NODE_ENV'),
+                        string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')
                     ]) {
+                        // Login to GHCR for BuildKit cache pull
+                        sh 'echo $GITHUB_TOKEN | docker login ghcr.io -u ${GITHUB_USER} --password-stdin'
+
+                        // Seed layer cache from previous image
+                        sh "docker pull ${FULL_IMAGE_NAME}:latest || echo 'No previous image available for cache'"
+
                         sh '''
-                            cat <<EOF > build_secrets.env
+                            set -e
+                            BUILD_SECRETS_FILE=$(mktemp -p /dev/shm build_secrets.XXXXXX.env 2>/dev/null || mktemp build_secrets.XXXXXX.env)
+                            chmod 600 "$BUILD_SECRETS_FILE"
+                            trap 'rm -f "$BUILD_SECRETS_FILE"' EXIT INT TERM
+                            cat <<EOF > "$BUILD_SECRETS_FILE"
 NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 FIREBASE_SERVICE_ACCOUNT_KEY='${FIREBASE_SERVICE_ACCOUNT_KEY}'
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
@@ -323,21 +378,18 @@ DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
 SENDGRID_API_KEY=${SENDGRID_API_KEY}
 NODE_ENV=${NODE_ENV}
 EOF
-                        '''
-
-                        // Build the image, passing the file as a secret named 'build_env'
-                        sh '''
                             docker build \
-                                --secret id=build_env,src=build_secrets.env \
+                                --memory=3g \
+                                --memory-swap=3g \
+                                --cache-from '''+FULL_IMAGE_NAME+''':latest \
+                                --build-arg BUILDKIT_INLINE_CACHE=1 \
+                                --secret id=build_env,src="$BUILD_SECRETS_FILE" \
                                 -t '''+DOCKER_IMAGE+''':'''+IMAGE_TAG+''' \
                                 -t '''+DOCKER_IMAGE+''':latest \
                                 -t '''+FULL_IMAGE_NAME+''':'''+IMAGE_TAG+''' \
                                 -t '''+FULL_IMAGE_NAME+''':latest \
                                 .
                         '''
-                        
-                        // Cleanup the local temp file immediately
-                        sh 'rm build_secrets.env'
                     }
 
                     
@@ -353,9 +405,8 @@ EOF
             steps {
                 echo 'Generating Software Bill of Materials (SBOM) with Syft...'
                 script {
-                    // Generate SBOM from source (package-lock.json)
                     sh """
-                        syft dir:. \
+                        syft file:package-lock.json \
                             --source-name=${DOCKER_IMAGE} \
                             --source-version=${IMAGE_TAG} \
                             -o cyclonedx-json \
@@ -409,14 +460,20 @@ EOF
                             ${REPORTS_DIR}/sbom-image.cyclonedx.json
                     """
                     
-                    // Display summaries
-                    echo 'Source (npm) vulnerabilities:'
-                    sh "trivy sbom --severity HIGH,CRITICAL ${REPORTS_DIR}/sbom.cyclonedx.json"
-                    
-                    echo 'Image (OS) vulnerabilities:'
-                    sh "trivy sbom --severity HIGH,CRITICAL ${REPORTS_DIR}/sbom-image.cyclonedx.json"
-                    
-                    echo 'Trivy vulnerability scan completed'
+                    // fail on fixable CRITICAL
+                    def criticalSource = sh(
+                        script: "trivy sbom --severity CRITICAL --ignore-unfixed --exit-code 1 ${REPORTS_DIR}/sbom.cyclonedx.json",
+                        returnStatus: true
+                    )
+                    def criticalImage = sh(
+                        script: "trivy sbom --severity CRITICAL --ignore-unfixed --exit-code 1 ${REPORTS_DIR}/sbom-image.cyclonedx.json",
+                        returnStatus: true
+                    )
+                    if (criticalSource != 0 || criticalImage != 0) {
+                        error 'Fixable CRITICAL vulnerabilities detected by Trivy - build blocked (see trivy-report.html)'
+                    }
+
+                    echo 'Trivy vulnerability scan completed - no fixable CRITICAL findings'
                 }
             }
         }
@@ -453,11 +510,13 @@ EOF
         }
         
         stage('Sign with Cosign') {
+            options { timeout(time: 5, unit: 'MINUTES') }
             steps {
                 echo 'Signing Docker image with Cosign...'
                 script {
                     withCredentials([
                         file(credentialsId: 'COSIGN_PRIVATE_KEY', variable: 'COSIGN_KEY_FILE'),
+                        file(credentialsId: 'COSIGN_PUBLIC_KEY', variable: 'COSIGN_PUB_FILE'),
                         string(credentialsId: 'COSIGN_PASSWORD', variable: 'COSIGN_PASSWORD'),
                         string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')
                     ]) {
@@ -467,8 +526,28 @@ EOF
                             cosign login ghcr.io -u ${GITHUB_USER} -p \$GITHUB_TOKEN
                             cosign sign --yes --key \$COSIGN_KEY_FILE ${env.IMAGE_DIGEST}
                         """
-                        
-                        echo 'Image signed successfully with Cosign'
+
+                        // Verify signature
+                        sh """
+                            export COSIGN_REPOSITORY=${FULL_IMAGE_NAME}
+                            cosign verify --key \$COSIGN_PUB_FILE ${env.IMAGE_DIGEST}
+                        """
+
+                        // Attach SBOM as a signed CycloneDX attestation
+                        sh """
+                            export COSIGN_REPOSITORY=${FULL_IMAGE_NAME}
+                            cosign attest --yes \
+                                --key \$COSIGN_KEY_FILE \
+                                --type cyclonedx \
+                                --predicate ${REPORTS_DIR}/sbom-image.cyclonedx.json \
+                                ${env.IMAGE_DIGEST}
+                            cosign verify-attestation \
+                                --key \$COSIGN_PUB_FILE \
+                                --type cyclonedx \
+                                ${env.IMAGE_DIGEST} > /dev/null
+                        """
+
+                        echo 'Image signed, attested and verified successfully with Cosign'
                     }
                 }
             }
@@ -505,10 +584,30 @@ EOF
         }
         
         stage('Wait for Staging Deployment') {
+            options { timeout(time: 10, unit: 'MINUTES') }
             steps {
                 echo 'Waiting for ArgoCD to sync and staging deployment to be ready...'
                 script {
-                    sleep 30
+                    def tagMatched = false
+                    def runningTag = ''
+                    for (int i = 0; i < 36; i++) {
+                        runningTag = sh(
+                            script: '''kubectl get deployment boostflow-app -n boostflow \
+                                -o jsonpath='{.spec.template.spec.containers[0].image}' \
+                                | awk -F: '{print $NF}' ''',
+                            returnStdout: true
+                        ).trim()
+                        if (runningTag == env.IMAGE_TAG) {
+                            tagMatched = true
+                            break
+                        }
+                        echo "Running tag '${runningTag}' != expected '${env.IMAGE_TAG}'. Waiting for ArgoCD to sync (attempt ${i+1}/36)..."
+                        sleep 10
+                    }
+                    if (!tagMatched) {
+                        error "ArgoCD did not sync image tag '${env.IMAGE_TAG}' within 6 minutes (still showing '${runningTag}'). Check ArgoCD application state."
+                    }
+                    echo "ArgoCD synced to ${env.IMAGE_TAG}"
 
                     sh """
                         kubectl rollout status deployment/boostflow-app \
@@ -534,70 +633,21 @@ EOF
                         error 'Staging deployment health check failed after 5 minutes'
                     }
 
-                    echo 'Staging deployment is healthy and ready for DAST scanning'
+                    echo 'Staging deployment is healthy'
                 }
             }
         }
         
-        stage('DAST - OWASP ZAP') {
+        stage('Trigger DAST Pipeline') {
             steps {
-                echo 'Running OWASP ZAP baseline scan against staging...'
-                script {
-                    sh """
-                        mkdir -p ${REPORTS_DIR}
-                        chmod 777 ${REPORTS_DIR}
-                        docker run --rm \
-                            -v \$(pwd)/${REPORTS_DIR}:/zap/wrk:rw \
-                            --network host \
-                            ghcr.io/zaproxy/zaproxy:stable \
-                            zap-baseline.py \
-                            -t \${STAGING_URL} \
-                            -r zap-report.html \
-                            -J zap-report.json \
-                            -I
-                    """
-                    
-                    echo 'OWASP ZAP baseline scan completed - review report for findings'
-                }
-            }
-        }
-        
-        stage('DAST - Nuclei') {
-            steps {
-                echo 'Running Nuclei vulnerability scanning against staging...'
-                script {
-                    sh """
-                        docker run --rm \
-                            -v \$(pwd)/${REPORTS_DIR}:/output \
-                            --network host \
-                            projectdiscovery/nuclei:latest \
-                            -u \${STAGING_URL} \
-                            -stats \
-                            -severity medium,high,critical \
-                            -je /output/nuclei-report.json
-                    """
-                    
-                    echo 'Nuclei scan completed - review report for findings'
-                }
-            }
-        }
-        
-        stage('DAST - testssl.sh') {
-            steps {
-                echo 'Running testssl.sh TLS/SSL audit against staging...'
-                script {
-                    def targetHost = STAGING_URL.replaceAll('https?://', '')
-                    sh """
-                        docker run --rm \
-                            -v \$(pwd)/${REPORTS_DIR}:/output \
-                            --network host \
-                            drwetter/testssl.sh:latest \
-                            --jsonfile /output/testssl-report.json \
-                            ${targetHost}
-                    """
-                    
-                    echo 'testssl.sh audit completed - review report for findings'
-                }
+                echo 'Triggering separate DAST pipeline...'
+                build job: 'boostflow-dast',
+                    wait: false,
+                    propagate: false,
+                    parameters: [
+                        string(name: 'IMAGE_TAG', value: env.IMAGE_TAG),
+                        string(name: 'SOURCE_BUILD_URL', value: env.BUILD_URL)
+                    ]
             }
         }
     }
@@ -605,7 +655,10 @@ EOF
     post {
         always {
             echo 'Archiving security reports and artifacts...'
-            
+
+            // Publish JUnit test results
+            junit testResults: 'coverage/junit.xml', allowEmptyResults: true
+
             // Archive all security reports
             archiveArtifacts artifacts: "${REPORTS_DIR}/**/*", allowEmptyArchive: true
             
@@ -618,16 +671,6 @@ EOF
                 reportFiles: 'trivy-report.html',
                 reportName: 'Trivy Vulnerability Report'
             ])
-            
-            publishHTML([
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: "${REPORTS_DIR}",
-                reportFiles: 'zap-report.html',
-                reportName: 'OWASP ZAP Report'
-            ])
-            
             echo 'Cleaning up workspace...'
         }
         
@@ -640,12 +683,20 @@ EOF
         failure {
             echo 'Pipeline failed! Check the logs for details.'
         }
+
+        unstable {
+            echo 'Pipeline is UNSTABLE - quality gates reported non-blocking findings. Review archived reports.'
+        }
         
         cleanup {
             // Clean up local Docker images to save space
             sh """
                 docker rmi ${DOCKER_IMAGE}:${IMAGE_TAG} || true
                 docker rmi ${DOCKER_IMAGE}:latest || true
+                docker rmi ${FULL_IMAGE_NAME}:${IMAGE_TAG} || true
+                docker rmi ${FULL_IMAGE_NAME}:latest || true
+                docker image prune -f
+                docker container prune -f
             """
         }
     }

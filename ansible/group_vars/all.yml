@@ -29,6 +29,13 @@ helm_charts:
     name: awx-operator
     version: 2.19.1
     namespace: awx
+  kyverno:
+    repo: https://kyverno.github.io/kyverno/
+    name: kyverno
+    version: 3.3.4
+    namespace: kyverno
+
+cosign_image_pattern: "ghcr.io/kdim67/boostflow*"
 
 git_repo_url: https://github.com/KDim67/boostflow-thesis.git
 git_repo_branch: main

@@ -202,6 +202,7 @@
         - { key: ingress-nginx, value: "{{ helm_charts.ingress_nginx.repo }}" }
         - { key: argo, value: "{{ helm_charts.argocd.repo }}" }
         - { key: awx-operator, value: "{{ helm_charts.awx_operator.repo }}" }
+        - { key: kyverno, value: "{{ helm_charts.kyverno.repo }}" }
       register: repo_result
       changed_when: "'has been added' in repo_result.stdout"
 
@@ -355,13 +356,79 @@
       when: minio_secret_check.rc != 0
       no_log: true
 
-    - name: Apply ArgoCD AppProject and Applications
-      command: kubectl apply -f {{ item }}
-      loop:
-        - k8s/argocd/project-boostflow.yaml
-        - k8s/argocd/app-boostflow.yaml
-      args:
-        chdir: "{{ playbook_dir }}/../../"
+    - name: Fail if cosign_public_key is not provided
+      fail:
+        msg: >
+          cosign_public_key extra-var is required.
+          Pass it with: -e "@cosign-vars.yml" where cosign-vars.yml contains
+          a multi-line cosign_public_key value (PEM format).
+      when: cosign_public_key is not defined or cosign_public_key | length == 0
+
+    - name: Check if Kyverno is installed
+      command: helm status kyverno -n {{ helm_charts.kyverno.namespace }}
+      register: kyverno_status
+      ignore_errors: true
+
+    - name: Install Kyverno
+      command: >
+        helm install kyverno kyverno/kyverno
+        --namespace {{ helm_charts.kyverno.namespace }}
+        --create-namespace
+        --version {{ helm_charts.kyverno.version }}
+        --set admissionController.replicas=1
+        --set backgroundController.replicas=1
+        --set cleanupController.replicas=1
+        --set reportsController.replicas=1
+      when: kyverno_status.rc != 0
+
+    - name: Wait for Kyverno admission controller
+      command: >
+        kubectl wait --for=condition=available deployment/kyverno-admission-controller
+        -n {{ helm_charts.kyverno.namespace }} --timeout=300s
+
+    - name: Render Cosign verifyImages ClusterPolicy
+      copy:
+        dest: /tmp/kyverno-verify-boostflow.yaml
+        mode: "0600"
+        content: |
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          metadata:
+            name: verify-boostflow-image-signature
+          spec:
+            validationFailureAction: Enforce
+            background: false
+            webhookTimeoutSeconds: 30
+            failurePolicy: Fail
+            rules:
+              - name: check-cosign-signature
+                match:
+                  any:
+                    - resources:
+                        kinds:
+                          - Pod
+                        namespaces:
+                          - {{ app_namespace }}
+                verifyImages:
+                  - imageReferences:
+                      - "{{ cosign_image_pattern }}"
+                    required: true
+                    mutateDigest: true
+                    verifyDigest: true
+                    attestors:
+                      - count: 1
+                        entries:
+                          - keys:
+                              publicKeys: |-
+          {{ cosign_public_key | indent(22, true) }}
+
+    - name: Apply Cosign verifyImages ClusterPolicy
+      command: kubectl apply -f /tmp/kyverno-verify-boostflow.yaml
+
+    - name: Remove rendered policy file
+      file:
+        path: /tmp/kyverno-verify-boostflow.yaml
+        state: absent
 
     - name: Display ArgoCD initial admin password
       shell: >

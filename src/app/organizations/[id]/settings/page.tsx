@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/firebase/useAuth";
 import {
@@ -30,6 +30,7 @@ import ImageCropper, { getCroppedImg } from "@/components/ui/ImageCropper";
 
 export default function OrganizationSettings() {
   const { id } = useParams();
+  const router = useRouter();
 
   // Core organization data and UI state
   const [organization, setOrganization] = useState<Organization | null>(null);
@@ -425,7 +426,7 @@ export default function OrganizationSettings() {
 
       // Redirect to organizations list after brief delay
       setTimeout(() => {
-        globalThis.location.href = "/organizations";
+        router.push("/organizations");
       }, 2000);
     } catch (error) {
       console.error("Error deleting organization:", error);

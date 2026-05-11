@@ -1,8 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const OAUTH_POPUP_PATHS = ["/login", "/signup"];
+
+function generateCsrfToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Buffer.from(bytes).toString("base64url");
+}
+
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
+  const { pathname } = request.nextUrl;
+
+  const usesOAuthPopup = OAUTH_POPUP_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  );
 
   const scriptSrc = isDev
     ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com https://maps.googleapis.com"
@@ -29,6 +42,21 @@ export function proxy(request: NextRequest) {
     request: { headers: requestHeaders },
   });
   response.headers.set("Content-Security-Policy", cspHeader);
+
+  response.headers.set(
+    "Cross-Origin-Opener-Policy",
+    usesOAuthPopup ? "same-origin-allow-popups" : "same-origin"
+  );
+  response.headers.set("Cross-Origin-Embedder-Policy", "unsafe-none");
+
+  if (!request.cookies.get("csrf_token")) {
+    response.cookies.set("csrf_token", generateCsrfToken(), {
+      httpOnly: false,
+      sameSite: "strict",
+      secure: !isDev,
+      path: "/",
+    });
+  }
 
   return response;
 }

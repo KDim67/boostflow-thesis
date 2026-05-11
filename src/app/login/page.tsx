@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState, Suspense } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/useAuth";
 
 import LoginForm from "./LoginForm";
@@ -11,7 +10,6 @@ export default function LoginPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
   const { loginWithGoogle, clearError } = useAuth();
-  const router = useRouter();
 
   const handleGoogleSignIn = async () => {
     try {
@@ -19,13 +17,10 @@ export default function LoginPage() {
       setGoogleError("");
       clearError();
       await loginWithGoogle();
-
-      // Google users are automatically verified, so proceed directly
-      router.push("/organizations");
+      // Page will navigate away to Google
     } catch (error: unknown) {
       const err = error as { message?: string };
       setGoogleError(err.message || "Failed to sign in with Google");
-    } finally {
       setIsGoogleLoading(false);
     }
   };
@@ -116,7 +111,7 @@ export default function LoginPage() {
                             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                           ></path>
                         </svg>
-                        Signing in...
+                        Redirecting to Google...
                       </>
                     ) : (
                       <>
