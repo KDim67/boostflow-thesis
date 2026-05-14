@@ -185,15 +185,28 @@
         - "{{ monitoring_namespace }}"
         - "{{ argocd_namespace }}"
         - "{{ awx_namespace }}"
+        - "{{ backup_namespace }}"
+        - "{{ compliance_namespace }}"
       register: ns_result
       failed_when: ns_result.rc != 0 and 'already exists' not in ns_result.stderr
 
-    - name: Apply Pod Security Standards to boostflow namespace
+    - name: Apply Pod Security Standards (restricted) to application namespaces
       command: >
-        kubectl label namespace {{ app_namespace }}
+        kubectl label namespace {{ item }}
         pod-security.kubernetes.io/enforce=restricted
         pod-security.kubernetes.io/audit=restricted
         pod-security.kubernetes.io/warn=restricted
+        --overwrite
+      loop:
+        - "{{ app_namespace }}"
+        - "{{ backup_namespace }}"
+
+    - name: Apply Pod Security Standards (privileged) to compliance namespace
+      command: >
+        kubectl label namespace {{ compliance_namespace }}
+        pod-security.kubernetes.io/enforce=privileged
+        pod-security.kubernetes.io/audit=privileged
+        pod-security.kubernetes.io/warn=privileged
         --overwrite
 
     - name: Add Helm repositories
@@ -354,6 +367,20 @@
         --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
         --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
       when: minio_secret_check.rc != 0
+
+    - name: Check if MinIO backup secret exists
+      command: kubectl get secret minio-secret -n {{ backup_namespace }}
+      register: minio_backup_secret_check
+      ignore_errors: true
+
+    - name: Create MinIO secret in backup namespace
+      command: >
+        kubectl create secret generic minio-secret
+        --namespace {{ backup_namespace }}
+        --from-literal=MINIO_ENDPOINT=minio.{{ app_namespace }}.svc.cluster.local:9000
+        --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
+        --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
+      when: minio_backup_secret_check.rc != 0
       no_log: true
 
     - name: Fail if cosign_public_key is not provided

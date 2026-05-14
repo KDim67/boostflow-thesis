@@ -23,7 +23,7 @@ const DocumentationPage = () => {
             <p className="text-lg md:text-xl text-gray-600 dark:text-gray-300 mb-8">
               BoostFlow is a modern project management and productivity platform
               built around organizations. Create your organization, invite team
-              members, manage projects, and automate workflows all in one place.
+              members, and manage projects all in one place.
             </p>
           </div>
         </div>
@@ -172,8 +172,7 @@ const DocumentationPage = () => {
                   <li>Click "New Project" and enter project details</li>
                   <li>Set project timeline, budget, and client information</li>
                   <li>Assign team members and define their roles</li>
-                  <li>Start adding tasks and setting up workflows</li>
-                  <li>Configure automation and integrations as needed</li>
+                  <li>Start adding tasks and tracking progress</li>
                 </ol>
               </div>
             </div>
@@ -195,47 +194,8 @@ const DocumentationPage = () => {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Feature 1 */}
-              <div
-                id="task-automation"
-                className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 transition-all hover:shadow-xl border border-gray-100 dark:border-gray-700"
-              >
-                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mb-4">
-                  <svg
-                    className="w-6 h-6 text-blue-600 dark:text-blue-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Task Automation</h3>
-                <p className="text-gray-600 dark:text-gray-300 mb-4">
-                  BoostFlow's AI-powered automation tools learn from your team's
-                  patterns to automate repetitive tasks, saving you time and
-                  reducing errors.
-                </p>
-                <ul className="list-disc pl-6 mb-6 space-y-2 text-gray-600 dark:text-gray-300">
-                  <li>
-                    <strong>Workflow automation:</strong> Visual builder for
-                    creating automated workflows
-                  </li>
-                  <li>
-                    <strong>Task prioritization:</strong> Intelligent task
-                    ordering and scheduling
-                  </li>
-                </ul>
-              </div>
-
-              {/* Feature 2 */}
               <div
                 id="ai-analytics"
                 className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 transition-all hover:shadow-xl border border-gray-100 dark:border-gray-700"
@@ -343,12 +303,12 @@ const DocumentationPage = () => {
               </h2>
               <p className="text-lg text-gray-600 dark:text-gray-300">
                 Advanced organization features to scale your team and optimize
-                workflows.
+                productivity.
               </p>
             </div>
 
             {/* Organization Features */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16 mt-16">
+            <div className="grid grid-cols-1 gap-8 mb-16 mt-16">
               {/* Organization Settings */}
               <div
                 id="organization-settings"
@@ -370,30 +330,6 @@ const DocumentationPage = () => {
                     • Member role management (Owner, Admin, Member, Viewer)
                   </li>
                   <li>• Custom branding and logo upload</li>
-                </ul>
-              </div>
-
-              {/* Workflow Automation */}
-              <div
-                id="workflow-automation"
-                className="bg-gray-50 dark:bg-gray-800 rounded-xl shadow-md p-6"
-              >
-                <h3 className="text-xl font-semibold mb-4">
-                  Workflow Automation
-                </h3>
-                <p className="text-gray-600 dark:text-gray-300 mb-4">
-                  Create powerful automated workflows to streamline your project
-                  management.
-                </p>
-                <ul className="text-gray-600 dark:text-gray-300 space-y-2">
-                  <li>
-                    • Visual workflow builder with triggers, conditions, and
-                    actions
-                  </li>
-                  <li>• Automated task creation and assignment</li>
-                  <li>• Project-based workflow management</li>
-                  <li>• Workflow execution tracking and history</li>
-                  <li>• Integration with third-party services</li>
                 </ul>
               </div>
             </div>
@@ -424,7 +360,7 @@ const DocumentationPage = () => {
               Ready to Get Started with BoostFlow?
             </h2>
             <p className="text-lg mb-8 text-blue-100">
-              Join thousands of teams that use BoostFlow to automate tasks,
+              Join thousands of teams that use BoostFlow to manage tasks,
               analyze data, and collaborate more effectively.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

@@ -553,6 +553,67 @@ EOF
             }
         }
         
+        stage('SLSA Provenance') {
+            options { timeout(time: 5, unit: 'MINUTES') }
+            steps {
+                echo 'Generating and attaching SLSA provenance attestation...'
+                script {
+                    withCredentials([
+                        file(credentialsId: 'COSIGN_PRIVATE_KEY', variable: 'COSIGN_KEY_FILE'),
+                        file(credentialsId: 'COSIGN_PUBLIC_KEY', variable: 'COSIGN_PUB_FILE'),
+                        string(credentialsId: 'COSIGN_PASSWORD', variable: 'COSIGN_PASSWORD'),
+                        string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')
+                    ]) {
+                        def buildStartedAt = sh(script: 'date -u +%Y-%m-%dT%H:%M:%SZ', returnStdout: true).trim()
+                        def gitFullCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                        def gitRemote = sh(script: 'git config --get remote.origin.url', returnStdout: true).trim()
+
+                        writeFile file: "${REPORTS_DIR}/slsa-provenance.json", text: """{
+  \"buildType\": \"https://github.com/slsa-framework/slsa-github-generator/jenkins@v1\",
+  \"builder\": { \"id\": \"${env.JENKINS_URL}\" },
+  \"invocation\": {
+    \"configSource\": {
+      \"uri\": \"${gitRemote}\",
+      \"digest\": { \"sha1\": \"${gitFullCommit}\" },
+      \"entryPoint\": \"Jenkinsfile\"
+    },
+    \"environment\": {
+      \"jenkinsBuildNumber\": \"${env.BUILD_NUMBER}\",
+      \"jenkinsJobName\": \"${env.JOB_NAME}\",
+      \"jenkinsBuildUrl\": \"${env.BUILD_URL}\"
+    }
+  },
+  \"metadata\": {
+    \"buildInvocationId\": \"${env.BUILD_TAG}\",
+    \"buildStartedOn\": \"${buildStartedAt}\",
+    \"completeness\": { \"parameters\": true, \"environment\": false, \"materials\": true },
+    \"reproducible\": false
+  },
+  \"materials\": [
+    { \"uri\": \"git+${gitRemote}@refs/heads/${env.BRANCH_NAME ?: 'main'}\", \"digest\": { \"sha1\": \"${gitFullCommit}\" } }
+  ]
+}
+"""
+
+                        sh """
+                            export COSIGN_REPOSITORY=${FULL_IMAGE_NAME}
+                            cosign login ghcr.io -u ${GITHUB_USER} -p \$GITHUB_TOKEN
+                            cosign attest --yes \
+                                --key \$COSIGN_KEY_FILE \
+                                --type slsaprovenance \
+                                --predicate ${REPORTS_DIR}/slsa-provenance.json \
+                                ${env.IMAGE_DIGEST}
+                            cosign verify-attestation \
+                                --key \$COSIGN_PUB_FILE \
+                                --type slsaprovenance \
+                                ${env.IMAGE_DIGEST} > /dev/null
+                        """
+                        echo 'SLSA provenance attached and verified'
+                    }
+                }
+            }
+        }
+        
         stage('Update K8s Manifest') {
             steps {
                 echo 'Updating Kubernetes manifest in config repo...'
@@ -634,6 +695,44 @@ EOF
                     }
 
                     echo 'Staging deployment is healthy'
+                }
+            }
+        }
+        
+        stage('Compliance - CIS Benchmark') {
+            options { timeout(time: 10, unit: 'MINUTES') }
+            steps {
+                echo 'Running kube-bench CIS Kubernetes Benchmark...'
+                script {
+                    withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
+                        sh """
+                            rm -rf boostflow-thesis-config
+                            git clone https://${GITHUB_USER}:\${GITHUB_TOKEN}@github.com/${GITHUB_USER}/boostflow-thesis-config.git boostflow-thesis-config
+                        """
+                    }
+
+                    def benchStatus = sh(
+                        script: '''
+                            set -e
+                            kubectl -n compliance delete job kube-bench --ignore-not-found
+                            kubectl apply -f boostflow-thesis-config/compliance/kube-bench-job.yaml
+                            kubectl -n compliance wait --for=condition=complete --timeout=300s job/kube-bench || true
+                            kubectl -n compliance logs job/kube-bench --all-containers=true > ''' + "${REPORTS_DIR}/kube-bench.json" + ''' || true
+                            kubectl -n compliance get job kube-bench -o yaml > ''' + "${REPORTS_DIR}/kube-bench-job.yaml" + ''' || true
+                            kubectl -n compliance get pods -l job-name=kube-bench -o yaml > ''' + "${REPORTS_DIR}/kube-bench-pods.yaml" + ''' || true
+                            kubectl -n compliance get events --sort-by=.lastTimestamp > ''' + "${REPORTS_DIR}/kube-bench-events.txt" + ''' || true
+                            kubectl -n compliance get job kube-bench -o jsonpath='{.status.succeeded}' | grep -q '^1$'
+                        ''',
+                        returnStatus: true
+                    )
+
+                    sh 'rm -rf boostflow-thesis-config'
+
+                    if (benchStatus != 0) {
+                        unstable 'kube-bench job did not complete cleanly (see kube-bench.json)'
+                    } else {
+                        echo 'kube-bench report archived'
+                    }
                 }
             }
         }

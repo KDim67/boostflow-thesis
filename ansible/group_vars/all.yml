@@ -2,6 +2,8 @@ app_namespace: boostflow
 monitoring_namespace: monitoring
 argocd_namespace: argocd
 awx_namespace: awx
+backup_namespace: backup
+compliance_namespace: compliance
 
 ghcr_registry: ghcr.io
 ghcr_username: kdim67

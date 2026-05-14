@@ -20,6 +20,7 @@ import {
   UserCredential,
 } from "firebase/auth";
 import { auth } from "./config";
+import { logAuditEvent } from "@/lib/services/auditClient";
 
 // Configure Google OAuth provider
 const googleProvider = new GoogleAuthProvider();
@@ -56,9 +57,22 @@ export const registerUser = async (
       await updateProfile(userCredential.user, { displayName });
     }
 
+    void logAuditEvent({
+      type: "auth.register",
+      outcome: "success",
+      userEmail: email,
+      user: userCredential.user,
+    });
+
     return userCredential;
   } catch (error) {
     console.error("Error registering user:", error);
+    void logAuditEvent({
+      type: "auth.register",
+      outcome: "failure",
+      userEmail: email,
+      reason: (error as { code?: string })?.code,
+    });
     throw error; // Re-throw to allow caller to handle specific error cases
   }
 };
@@ -77,9 +91,22 @@ export const loginUser = async (
   password: string
 ): Promise<UserCredential> => {
   try {
-    return await signInWithEmailAndPassword(auth, email, password);
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    void logAuditEvent({
+      type: "auth.login.success",
+      outcome: "success",
+      userEmail: email,
+      user: cred.user,
+    });
+    return cred;
   } catch (error) {
     console.error("Error logging in:", error);
+    void logAuditEvent({
+      type: "auth.login.failure",
+      outcome: "failure",
+      userEmail: email,
+      reason: (error as { code?: string })?.code,
+    });
     throw error; // Re-throw to allow caller to handle specific error cases
   }
 };
@@ -95,7 +122,13 @@ export const loginUser = async (
  */
 export const logoutUser = async (): Promise<void> => {
   try {
-    return await signOut(auth);
+    const current = auth.currentUser;
+    await signOut(auth);
+    void logAuditEvent({
+      type: "auth.logout",
+      outcome: "success",
+      userEmail: current?.email ?? null,
+    });
   } catch (error) {
     console.error("Error logging out:", error);
     throw error;
@@ -121,9 +154,20 @@ export const resetPassword = async (email: string): Promise<void> => {
       handleCodeInApp: true, // Handle the reset within our app rather than external browser
     };
 
-    return await sendPasswordResetEmail(auth, email, actionCodeSettings);
+    await sendPasswordResetEmail(auth, email, actionCodeSettings);
+    void logAuditEvent({
+      type: "auth.password_reset_requested",
+      outcome: "success",
+      userEmail: email,
+    });
   } catch (error) {
     console.error("Error resetting password:", error);
+    void logAuditEvent({
+      type: "auth.password_reset_requested",
+      outcome: "failure",
+      userEmail: email,
+      reason: (error as { code?: string })?.code,
+    });
     throw error;
   }
 };
@@ -148,9 +192,31 @@ export const getCurrentUser = (): User | null => {
  */
 export const signInWithGoogle = async (): Promise<UserCredential> => {
   try {
-    return await signInWithPopup(auth, googleProvider);
+    const cred = await signInWithPopup(auth, googleProvider);
+    void logAuditEvent({
+      type: "auth.login.success",
+      outcome: "success",
+      userEmail: cred.user.email,
+      user: cred.user,
+      metadata: { provider: "google" },
+    });
+    return cred;
   } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (
+      code === "auth/popup-closed-by-user" ||
+      code === "auth/cancelled-popup-request" ||
+      code === "user-cancelled"
+    ) {
+      throw error;
+    }
     console.error("Error signing in with Google:", error);
+    void logAuditEvent({
+      type: "auth.login.failure",
+      outcome: "failure",
+      reason: code,
+      metadata: { provider: "google" },
+    });
     throw error;
   }
 };

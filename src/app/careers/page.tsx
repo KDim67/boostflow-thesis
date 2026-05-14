@@ -242,8 +242,7 @@ const CareersPage = () => {
               </div>
               <p className="text-gray-600 dark:text-gray-300 mb-4">
                 Join our AI team to develop intelligent features that help users
-                automate workflows and gain insights from their productivity
-                data.
+                gain insights from their productivity data.
               </p>
               <div className="mb-6">
                 <h4 className="font-semibold mb-2">Requirements:</h4>

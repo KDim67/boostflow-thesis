@@ -21,7 +21,6 @@ export interface Organization {
   plan: SubscriptionPlan;
   memberCount?: number;
   allowPublicProjects?: boolean;
-  requireMfa?: boolean;
   sessionTimeout?: number;
   dataRetentionDays?: number;
   suspended?: boolean;

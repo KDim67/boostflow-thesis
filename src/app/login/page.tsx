@@ -19,7 +19,14 @@ export default function LoginPage() {
       await loginWithGoogle();
       // Page will navigate away to Google
     } catch (error: unknown) {
-      const err = error as { message?: string };
+      const err = error as { code?: string; message?: string };
+      if (
+        err.code === "auth/popup-closed-by-user" ||
+        err.code === "auth/cancelled-popup-request"
+      ) {
+        setIsGoogleLoading(false);
+        return;
+      }
       setGoogleError(err.message || "Failed to sign in with Google");
       setIsGoogleLoading(false);
     }

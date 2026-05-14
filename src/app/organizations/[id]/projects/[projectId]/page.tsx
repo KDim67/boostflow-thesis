@@ -23,7 +23,6 @@ import OrganizationProjectsTasks from "./tasks/page";
 import OrganizationProjectsTeam from "./team/page";
 import ProjectDocumentsPage from "./documents/page";
 import OrganizationProjectsAnalytics from "./analytics/page";
-import ProjectWorkflowsPage from "./automation/page";
 
 // Interface for individual task items within a project
 interface Task {
@@ -161,7 +160,7 @@ const getNextMilestoneStatus = (status: string): MilestoneStatus => {
  *
  * Main component for displaying detailed project information including:
  * - Project overview with milestones and recent tasks
- * - Tabbed interface for tasks, documents, team, analytics, and workflows
+ * - Tabbed interface for tasks, documents, team, and analytics
  * - Modal forms for editing projects and managing milestones
  * - Permission-based access control
  */
@@ -900,7 +899,7 @@ export default function ProjectDetailPage() {
   const [isLoading, setIsLoading] = useState(true); // Loading state for initial data fetch
   const [error, setError] = useState<string | null>(null); // Error message display
   const [canAccessAdvancedFeatures, setCanAccessAdvancedFeatures] =
-    useState(false); // Permission for analytics and workflows
+    useState(false); // Permission for analytics
 
   // Milestone modal state
   const [showMilestoneModal, setShowMilestoneModal] = useState(false);
@@ -965,7 +964,7 @@ export default function ProjectDetailPage() {
           return;
         }
 
-        // Check if user has permission to access advanced features (analytics and workflows)
+        // Check if user has permission to access advanced features (analytics)
         const canAccessAdvanced = await hasOrganizationPermission(
           user.uid,
           organizationId,
@@ -974,10 +973,7 @@ export default function ProjectDetailPage() {
         setCanAccessAdvancedFeatures(canAccessAdvanced);
 
         // Reset active tab if user doesn't have permission for advanced features
-        if (
-          !canAccessAdvanced &&
-          (activeTab === "analytics" || activeTab === "workflows")
-        ) {
+        if (!canAccessAdvanced && activeTab === "analytics") {
           setActiveTab("overview");
         }
 
@@ -1351,14 +1347,6 @@ export default function ProjectDetailPage() {
                 Analytics
               </button>
             )}
-            {canAccessAdvancedFeatures && (
-              <button
-                onClick={() => setActiveTab("workflows")}
-                className={`py-4 px-1 ${activeTab === "workflows" ? "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"} font-medium`}
-              >
-                Workflows
-              </button>
-            )}
           </nav>
         </div>
 
@@ -1402,13 +1390,6 @@ export default function ProjectDetailPage() {
           {activeTab === "analytics" && canAccessAdvancedFeatures && (
             <div>
               <OrganizationProjectsAnalytics />
-            </div>
-          )}
-
-          {/* Workflows Tab */}
-          {activeTab === "workflows" && canAccessAdvancedFeatures && (
-            <div>
-              <ProjectWorkflowsPage />
             </div>
           )}
         </div>

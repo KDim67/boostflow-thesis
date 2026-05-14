@@ -343,7 +343,7 @@ export default function OrganizationProjects() {
           Projects
         </h1>
         <p className="text-gray-600 dark:text-gray-300">
-          Manage your organization's projects and workflows
+          Manage your organization's projects
         </p>
       </div>
 

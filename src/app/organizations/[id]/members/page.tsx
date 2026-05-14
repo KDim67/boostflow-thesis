@@ -992,23 +992,6 @@ export default function OrganizationMembers() {
               </tr>
               <tr>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                  Access automation &amp; workflows
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-center">
-                  <CheckIcon />
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-center">
-                  <CheckIcon />
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-center">
-                  <CheckIcon />
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-center">
-                  <XIcon />
-                </td>
-              </tr>
-              <tr>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                   Invite members
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center">

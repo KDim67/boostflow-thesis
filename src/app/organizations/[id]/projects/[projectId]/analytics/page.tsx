@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 
 import { useAuth } from "@/lib/firebase/useAuth";
 import { getDocument, queryDocuments } from "@/lib/firebase/firestoreService";
-import { getWorkflowsByProject } from "@/lib/services/automation/workflowService";
 import { hasOrganizationPermission } from "@/lib/firebase/organizationService";
 import { Project, OrganizationRole } from "@/lib/types/organization";
 import { where, orderBy, limit, Timestamp } from "firebase/firestore";
@@ -18,7 +17,6 @@ interface ProjectMetrics {
   totalTasks: number; // Total number of tasks in the project
   completedTasks: number; // Number of completed tasks
   overdueTasks: number; // Number of tasks past their due date
-  activeWorkflows: number; // Number of active automation workflows
   teamMembers: number; // Number of team members assigned to the project
   avgCompletionTime: number; // Average time to complete tasks (in hours)
   productivityScore: number; // Calculated productivity percentage (0-100)
@@ -151,7 +149,6 @@ const calculateTeamMembersCount = async (
  */
 const calculateCoreMetrics = (
   taskAnalytics: TaskAnalytics[],
-  activeWorkflows: number,
   teamMembersCount: number
 ): ProjectMetrics => {
   // Calculate core task metrics from the analytics data
@@ -192,7 +189,6 @@ const calculateCoreMetrics = (
     totalTasks,
     completedTasks,
     overdueTasks,
-    activeWorkflows,
     teamMembers: teamMembersCount,
     avgCompletionTime,
     productivityScore,
@@ -349,12 +345,6 @@ export default function ProjectAnalyticsPage() {
 
         setTasks(taskAnalytics);
 
-        // Fetch workflow automation data and count active workflows
-        const workflows = await getWorkflowsByProject(projectId);
-        const activeWorkflows = workflows.filter(
-          (w) => w.isActive === true
-        ).length;
-
         // Calculate team member count with fallback strategies
         const teamMembersCount = await calculateTeamMembersCount(
           projectId,
@@ -366,7 +356,6 @@ export default function ProjectAnalyticsPage() {
         // Compile current period metrics into a structured object
         const projectMetrics = calculateCoreMetrics(
           taskAnalytics,
-          activeWorkflows,
           teamMembersCount
         );
 
@@ -1091,37 +1080,6 @@ export default function ProjectAnalyticsPage() {
                     </div>
                     <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                       {metrics.teamMembers}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-4 h-4 text-purple-600 dark:text-purple-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M13 10V3L4 14h7v7l9-11h-7z"
-                          />
-                        </svg>
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          Active Workflows
-                        </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400">
-                          Automated processes
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                      {metrics.activeWorkflows}
                     </div>
                   </div>
 

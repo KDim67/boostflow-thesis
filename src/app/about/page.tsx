@@ -59,8 +59,8 @@ const AboutPage = () => {
                   BoostFlow was founded in 2025 by a team of productivity
                   enthusiasts who were frustrated with the fragmented nature of
                   existing project management tools. We set out to create a
-                  unified platform that combines task management, automation,
-                  and analytics in one seamless experience.
+                  unified platform that combines task management and analytics
+                  in one seamless experience.
                 </p>
                 <p className="text-gray-600 dark:text-gray-300">
                   After months of development and testing with early adopters,

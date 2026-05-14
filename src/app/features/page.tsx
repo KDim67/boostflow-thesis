@@ -31,102 +31,7 @@ export default function FeaturesPage() {
       {/* Main Features Section */}
       <section className="py-20 bg-white dark:bg-gray-900">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Feature 1: Task Automation */}
-          <div className="flex flex-col md:flex-row items-center gap-12 mb-24">
-            <div className="md:w-1/2 order-2 md:order-1">
-              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-1 inline-block mb-4">
-                <span className="text-blue-600 dark:text-blue-400 font-medium text-sm px-3 py-1">
-                  Task Automation
-                </span>
-              </div>
-              <h2 className="text-3xl font-bold mb-4">
-                Automate Repetitive Tasks
-              </h2>
-              <p className="text-gray-600 dark:text-gray-300 mb-6">
-                BoostFlow's AI-powered automation tools learn from your team's
-                patterns to automate repetitive tasks, saving you time and
-                reducing errors.
-              </p>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-start">
-                  <svg
-                    className="h-6 w-6 text-blue-600 dark:text-blue-400 mr-2 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  <span className="text-gray-700 dark:text-gray-300">
-                    Workflow automation with visual builder
-                  </span>
-                </li>
-                <li className="flex items-start">
-                  <svg
-                    className="h-6 w-6 text-blue-600 dark:text-blue-400 mr-2 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  <span className="text-gray-700 dark:text-gray-300">
-                    Task prioritization
-                  </span>
-                </li>
-                <li className="flex items-start">
-                  <svg
-                    className="h-6 w-6 text-blue-600 dark:text-blue-400 mr-2 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  <span className="text-gray-700 dark:text-gray-300">
-                    Document processing and data extraction
-                  </span>
-                </li>
-              </ul>
-              <Link
-                href="/signup"
-                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium py-3 px-6 rounded-full hover:shadow-lg transition-all inline-block"
-              >
-                Try It Free
-              </Link>
-            </div>
-            <div className="md:w-1/2 order-1 md:order-2 mb-8 md:mb-0">
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-4 relative">
-                <div className="aspect-video relative rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700">
-                  <img
-                    src="/previews/workflow-preview.png"
-                    alt="BoostFlow Task Automation Preview"
-                    className="w-full h-full object-cover transition-transform duration-300 ease-in-out hover:scale-105"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Feature 2: AI-Powered Analytics */}
+          {/* Feature: AI-Powered Analytics */}
           <div className="flex flex-col md:flex-row items-center gap-12 mb-24">
             <div className="md:w-1/2 mb-8 md:mb-0">
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-4 relative">
@@ -331,7 +236,7 @@ export default function FeaturesPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
             {/* Additional Feature 1 */}
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6 transition-all hover:shadow-lg">
               <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mb-4">
@@ -359,33 +264,6 @@ export default function FeaturesPage() {
 
             {/* Additional Feature 2 */}
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6 transition-all hover:shadow-lg">
-              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mb-4">
-                <svg
-                  className="w-6 h-6 text-purple-600 dark:text-purple-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">
-                Customizable Workflows
-              </h3>
-              <p className="text-gray-600 dark:text-gray-300 mb-4">
-                Create custom workflows tailored to your team's specific needs
-                and processes.
-              </p>
-            </div>
-
-            {/* Additional Feature 3 */}
-            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6 transition-all hover:shadow-lg">
               <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center mb-4">
                 <svg
                   className="w-6 h-6 text-green-600 dark:text-green-400"
@@ -407,7 +285,7 @@ export default function FeaturesPage() {
               </h3>
               <p className="text-gray-600 dark:text-gray-300 mb-4">
                 Connect with your favorite tools and services for a unified
-                workflow experience.
+                experience.
               </p>
             </div>
           </div>
@@ -419,7 +297,7 @@ export default function FeaturesPage() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl mx-auto text-center">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">
-              Ready to Transform Your Workflow?
+              Ready to Transform Your Productivity?
             </h2>
             <p className="text-lg mb-8 text-blue-100">
               Start your free trial today and see how BoostFlow can help your

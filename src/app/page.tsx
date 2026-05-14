@@ -10,13 +10,13 @@ export default function Home() {
             <div className="md:w-1/2 space-y-6">
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
                 <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Automate
+                  Manage
                 </span>{" "}
-                Your Organization's Workflow with AI
+                Your Organization with AI
               </h1>
               <p className="text-lg md:text-xl text-gray-600 dark:text-gray-300">
-                BoostFlow helps teams automate repetitive tasks, manage projects
-                efficiently, and enhance collaboration with AI-powered tools.
+                BoostFlow helps teams manage projects efficiently and enhance
+                collaboration with AI-powered tools.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
                 <Link
@@ -76,53 +76,8 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Feature 1 */}
-            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6 transition-all hover:shadow-lg">
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mb-4">
-                <svg
-                  className="w-6 h-6 text-blue-600 dark:text-blue-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Task Automation</h3>
-              <p className="text-gray-600 dark:text-gray-300 mb-4">
-                Automate repetitive tasks and workflows with AI-powered tools
-                that learn from your team's patterns.
-              </p>
-              <Link
-                href="/features"
-                className="text-blue-600 dark:text-blue-400 font-medium hover:underline inline-flex items-center"
-              >
-                Learn more
-                <svg
-                  className="w-4 h-4 ml-1"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </Link>
-            </div>
-
-            {/* Feature 2 */}
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6 transition-all hover:shadow-lg">
               <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center mb-4">
                 <svg
@@ -267,7 +222,7 @@ export default function Home() {
               </div>
               <h3 className="text-xl font-semibold mb-2">Boost Productivity</h3>
               <p className="text-gray-600 dark:text-gray-300">
-                Start automating tasks, analyzing data, and collaborating more
+                Start managing tasks, analyzing data, and collaborating more
                 effectively.
               </p>
             </div>
@@ -283,7 +238,7 @@ export default function Home() {
               Ready to Boost Your Team's Productivity?
             </h2>
             <p className="text-lg mb-8 text-blue-100">
-              Join thousands of teams that use BoostFlow to automate tasks,
+              Join thousands of teams that use BoostFlow to manage tasks,
               analyze data, and collaborate more effectively.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

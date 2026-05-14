@@ -230,25 +230,6 @@ export default function PricingPage() {
                     />
                   </svg>
                   <span className="text-gray-700 dark:text-gray-300">
-                    Limited automation workflows
-                  </span>
-                </li>
-                <li className="flex items-start">
-                  <svg
-                    className="h-6 w-6 text-gray-500 mr-2 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  <span className="text-gray-700 dark:text-gray-300">
                     Basic analytics
                   </span>
                 </li>
@@ -328,7 +309,7 @@ export default function PricingPage() {
                 </span>
               </div>
               <p className="text-gray-600 dark:text-gray-300 mb-6">
-                Perfect for small teams just getting started with automation.
+                Perfect for small teams just getting started.
               </p>
 
               <ul className="space-y-3 mb-8 flex-grow">
@@ -349,25 +330,6 @@ export default function PricingPage() {
                   </svg>
                   <span className="text-gray-700 dark:text-gray-300">
                     Unlimited Users
-                  </span>
-                </li>
-                <li className="flex items-start">
-                  <svg
-                    className="h-6 w-6 text-blue-500 mr-2 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  <span className="text-gray-700 dark:text-gray-300">
-                    Basic automation workflows
                   </span>
                 </li>
                 <li className="flex items-start">
@@ -477,25 +439,6 @@ export default function PricingPage() {
                   </svg>
                   <span className="text-gray-700 dark:text-gray-300">
                     Unlimited users
-                  </span>
-                </li>
-                <li className="flex items-start">
-                  <svg
-                    className="h-6 w-6 text-purple-500 mr-2 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  <span className="text-gray-700 dark:text-gray-300">
-                    Advanced automation workflows
                   </span>
                 </li>
                 <li className="flex items-start">
@@ -756,23 +699,6 @@ export default function PricingPage() {
                     </td>
                     <td className="py-4 px-6 text-center text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
                       Unlimited
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                    <td className="py-4 px-6 text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700 font-medium">
-                      Automation Workflows
-                    </td>
-                    <td className="py-4 px-6 text-center text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
-                      Limited
-                    </td>
-                    <td className="py-4 px-6 text-center text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
-                      Basic
-                    </td>
-                    <td className="py-4 px-6 text-center text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
-                      Advanced
-                    </td>
-                    <td className="py-4 px-6 text-center text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
-                      Custom
                     </td>
                   </tr>
                   <tr className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">

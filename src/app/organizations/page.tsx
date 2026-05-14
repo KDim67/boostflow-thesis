@@ -35,7 +35,6 @@ const getPlanFeatures = (plan: SubscriptionPlan) => {
     case "free":
       return [
         "Up to 15 users",
-        "Limited automation workflows",
         "Basic analytics",
         "4 GB storage",
         "Community support",
@@ -43,7 +42,6 @@ const getPlanFeatures = (plan: SubscriptionPlan) => {
     case "starter":
       return [
         "Unlimited Users",
-        "Basic automation workflows",
         "Standard analytics",
         "250 GB storage",
         "Email support",
@@ -51,7 +49,6 @@ const getPlanFeatures = (plan: SubscriptionPlan) => {
     case "professional":
       return [
         "Unlimited users",
-        "Advanced automation workflows",
         "AI-powered analytics",
         "Unlimited Storage",
         "Priority support",
@@ -896,7 +893,7 @@ function CreateOrganizationForm({
                 </span>
               </div>
               <p className="text-gray-600 dark:text-gray-300 mb-6">
-                Perfect for small teams just getting started with automation.
+                Perfect for small teams just getting started.
               </p>
               <ul className="space-y-3 mb-8 flex-grow">
                 {getPlanFeatures("starter").map((feature) => (
