@@ -85,7 +85,7 @@ export default function ProjectDocumentsPage() {
       ]);
 
       // Transform raw Firestore data into UI-friendly format
-      const formattedDocs = docs.map((doc: Document) => ({
+      const formattedDocs = (docs as unknown as Document[]).map((doc) => ({
         id: doc.id,
         name: doc.name,
         type: doc.type,
@@ -285,8 +285,8 @@ export default function ProjectDocumentsPage() {
    * Adds the new document to the beginning of the list and closes the modal
    * @param document - The newly uploaded document object
    */
-  const handleUploadSuccess = (document: Document) => {
-    setDocuments((prev) => [document, ...prev]);
+  const handleUploadSuccess = (document: unknown) => {
+    setDocuments((prev) => [document as Document, ...prev]);
     setShowUploadModal(false);
   };
 

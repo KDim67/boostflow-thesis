@@ -266,7 +266,7 @@ export default function ContactPage() {
                       For general inquiries:
                     </p>
                     <a
-                      href="mailto:info@boostflow.me"
+                      href="mailto:info@boostflow-thesis.me"
                       className="text-blue-600 dark:text-blue-400 hover:underline"
                     >
                       info email
@@ -275,7 +275,7 @@ export default function ContactPage() {
                       For support:
                     </p>
                     <a
-                      href="mailto:support@boostflow.me"
+                      href="mailto:support@boostflow-thesis.me"
                       className="text-blue-600 dark:text-blue-400 hover:underline"
                     >
                       support email

@@ -118,11 +118,15 @@ const Navbar = () => {
   }, []);
 
   return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? "bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-md" : "bg-transparent"}`}
-    >
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 md:h-20">
+    <header className="fixed top-4 left-0 right-0 z-50 flex justify-center px-4">
+      <div
+        className={`w-full max-w-5xl transition-all duration-500 rounded-full backdrop-blur-xl ${
+          isScrolled
+            ? "bg-white/80 dark:bg-white/10 shadow-sm"
+            : "bg-white/55 dark:bg-white/8"
+        }`}
+      >
+        <div className="px-6 h-14 flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
             <Image
@@ -132,7 +136,7 @@ const Navbar = () => {
               height={32}
               className="w-8 h-8"
             />
-            <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
               BoostFlow
             </span>
           </Link>
@@ -181,19 +185,18 @@ const Navbar = () => {
           <div className="hidden md:flex items-center space-x-4">
             {user ? (
               <>
-                {/* Notifications */}
                 {showNotifications && <NotificationDropdown />}
 
                 <div className="relative profile-dropdown">
                   <button
                     onClick={() => setIsProfileOpen(!isProfileOpen)}
-                    className="flex items-center space-x-2 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    className="flex items-center space-x-2 p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
                   >
                     {userProfile?.profilePicture || userProfile?.photoURL ? (
                       <img
                         src={userProfile.profilePicture || userProfile.photoURL}
                         alt={user.displayName || user.email || "User"}
-                        className="w-8 h-8 rounded-full object-cover border-2 border-white dark:border-gray-800"
+                        className="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-gray-700"
                       />
                     ) : (
                       <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
@@ -206,17 +209,17 @@ const Navbar = () => {
 
                   {/* Profile Dropdown */}
                   {isProfileOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50 border border-gray-200 dark:border-gray-700">
+                    <div className="absolute right-0 mt-3 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl py-2 z-50 border border-gray-100 dark:border-gray-700">
                       <Link
                         href="/settings"
-                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                         onClick={() => setIsProfileOpen(false)}
                       >
                         Settings
                       </Link>
                       <Link
                         href="/organizations"
-                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                         onClick={() => setIsProfileOpen(false)}
                       >
                         Workspace
@@ -224,20 +227,20 @@ const Navbar = () => {
                       {(isPlatformModerator || isSuperAdmin) && (
                         <Link
                           href="/platform-admin"
-                          className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                           onClick={() => setIsProfileOpen(false)}
                         >
                           Admin Panel
                         </Link>
                       )}
-                      <hr className="my-1 border-gray-200 dark:border-gray-700" />
+                      <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
                       <button
                         onClick={async () => {
                           await logout();
                           setIsProfileOpen(false);
                           router.push(`${globalThis.location.origin}/login`);
                         }}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                       >
                         Logout
                       </button>
@@ -256,7 +259,7 @@ const Navbar = () => {
                   </Link>
                   <Link
                     href="/signup"
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium py-2 px-4 rounded-full hover:shadow-lg transition-all"
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium py-2 px-5 rounded-full hover:shadow-lg hover:scale-105 transition-all duration-200"
                   >
                     Start Free Trial
                   </Link>
@@ -268,154 +271,128 @@ const Navbar = () => {
           {/* Mobile Menu Button */}
           <button
             type="button"
-            className="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none"
+            className="md:hidden p-2 rounded-full text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
-            <span className="sr-only">Open main menu</span>
-            {isMobileMenuOpen ? (
-              <svg
-                className="h-6 w-6"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
+            <svg
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              {isMobileMenuOpen ? (
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
                   d="M6 18L18 6M6 6l12 12"
                 />
-              </svg>
-            ) : (
-              <svg
-                className="h-6 w-6"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
+              ) : (
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
                   d="M4 6h16M4 12h16M4 18h16"
                 />
-              </svg>
-            )}
+              )}
+            </svg>
           </button>
         </div>
-      </div>
 
-      {/* Mobile Menu */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden bg-white dark:bg-gray-900 shadow-lg">
-          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-            <Link
-              href="/"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Home
-            </Link>
-            <Link
-              href="/features"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Features
-            </Link>
-            <Link
-              href="/pricing"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Pricing
-            </Link>
-            <Link
-              href="/demo"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Demo
-            </Link>
-            <Link
-              href="/contact"
-              className="block px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Contact
-            </Link>
-            <div className="pt-4 pb-3 border-t border-gray-200 dark:border-gray-700">
-              {user ? (
-                <>
-                  {showNotifications && (
-                    <Link
-                      href="/notifications"
-                      className="block px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      Notifications
-                    </Link>
-                  )}
+        {/* Mobile Menu */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-200 dark:border-gray-800 p-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg rounded-b-3xl">
+            <div className="space-y-1">
+              {[
+                "/ Home",
+                "/features Features",
+                "/pricing Pricing",
+                "/demo Demo",
+                "/contact Contact",
+              ].map((item) => {
+                const [href, ...rest] = item.split(" ");
+                return (
                   <Link
-                    href="/settings"
-                    className="block px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
+                    key={href}
+                    href={href}
+                    className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl font-medium transition-colors"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    Settings
+                    {rest.join(" ")}
                   </Link>
-                  <Link
-                    href="/organizations"
-                    className="block px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Workspace
-                  </Link>
-                  {(isPlatformModerator || isSuperAdmin) && (
-                    <Link
-                      href="/platform-admin"
-                      className="block px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      Admin Panel
-                    </Link>
-                  )}
-                  <button
-                    onClick={async () => {
-                      await logout();
-                      setIsMobileMenuOpen(false);
-                      router.push(`${globalThis.location.origin}/login`);
-                    }}
-                    className="block w-full text-left px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
-                  >
-                    Logout
-                  </button>
-                </>
-              ) : (
-                !authLoading && (
+                );
+              })}
+              <div className="pt-3 mt-2 border-t border-gray-100 dark:border-gray-800 space-y-1">
+                {user ? (
                   <>
+                    {showNotifications && (
+                      <Link
+                        href="/notifications"
+                        className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl font-medium transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        Notifications
+                      </Link>
+                    )}
                     <Link
-                      href="/login"
-                      className="block px-3 py-2 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
+                      href="/settings"
+                      className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl font-medium transition-colors"
                       onClick={() => setIsMobileMenuOpen(false)}
                     >
-                      Login
+                      Settings
                     </Link>
                     <Link
-                      href="/signup"
-                      className="block px-3 py-2 mt-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium rounded-full text-center"
+                      href="/organizations"
+                      className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl font-medium transition-colors"
                       onClick={() => setIsMobileMenuOpen(false)}
                     >
-                      Start Free Trial
+                      Workspace
                     </Link>
+                    {(isPlatformModerator || isSuperAdmin) && (
+                      <Link
+                        href="/platform-admin"
+                        className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl font-medium transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        Admin Panel
+                      </Link>
+                    )}
+                    <button
+                      onClick={async () => {
+                        await logout();
+                        setIsMobileMenuOpen(false);
+                        router.push(`${globalThis.location.origin}/login`);
+                      }}
+                      className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl font-medium transition-colors"
+                    >
+                      Logout
+                    </button>
                   </>
-                )
-              )}
+                ) : (
+                  !authLoading && (
+                    <>
+                      <Link
+                        href="/login"
+                        className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl font-medium transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        Login
+                      </Link>
+                      <Link
+                        href="/signup"
+                        className="block px-3 py-2 mt-1 text-sm bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium rounded-full text-center hover:shadow-md transition-all"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        Start Free Trial
+                      </Link>
+                    </>
+                  )
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </header>
   );
 };

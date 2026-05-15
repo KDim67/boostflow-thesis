@@ -9,6 +9,7 @@ import {
   getOrganizationMembers,
 } from "@/lib/firebase/organizationService";
 import { getUserProfile } from "@/lib/firebase/userProfileService";
+import type { User as FirebaseUser } from "firebase/auth";
 import {
   getChannel,
   getChannelMessages,
@@ -21,6 +22,13 @@ import {
   Message,
   ChannelMember,
 } from "@/lib/services/collaboration/communicationService";
+
+interface ChatUserProfile {
+  displayName?: string;
+  email?: string;
+  photoURL?: string;
+  profilePicture?: string;
+}
 
 /**
  * ChannelPage Component - Real-time chat interface for organization channels
@@ -106,9 +114,9 @@ const MessageBubble = ({
   message: Message;
   index: number;
   messages: Message[];
-  user: any;
-  userProfiles: Record<string, any>;
-  currentUserProfile: any;
+  user: FirebaseUser | null;
+  userProfiles: Record<string, ChatUserProfile | null>;
+  currentUserProfile: ChatUserProfile | null;
 }>) => {
   const showAvatar =
     index === 0 || messages[index - 1].author !== message.author;
@@ -1202,7 +1210,7 @@ export default function ChannelPage() {
                             return (
                               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                                 <span className="text-white font-semibold text-sm">
-                                  {getInitials(member.userProfile)}
+                                  {getInitials(member.userProfile ?? null)}
                                 </span>
                               </div>
                             );

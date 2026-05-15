@@ -220,10 +220,10 @@ const TermsOfServicePage = () => {
                 If you have any questions about these Terms, please contact us
                 at{" "}
                 <a
-                  href="mailto:legal@boostflow.me"
+                  href="mailto:legal@boostflow-thesis.me"
                   className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                 >
-                  legal@boostflow.me
+                  legal@boostflow-thesis.me
                 </a>
               </p>
               <div className="flex flex-col sm:flex-row gap-4">

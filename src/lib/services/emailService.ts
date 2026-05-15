@@ -66,7 +66,7 @@ class MailHogProvider implements EmailProvider {
         from:
           options.from ||
           process.env.DEFAULT_FROM_EMAIL ||
-          "noreply@boostflow.me",
+          "noreply@boostflow-thesis.me",
         to: Array.isArray(options.to) ? options.to.join(", ") : options.to,
         cc: options.cc?.join(", "),
         bcc: options.bcc?.join(", "),
@@ -136,7 +136,7 @@ class SendGridProvider implements EmailProvider {
         from:
           options.from ||
           process.env.DEFAULT_FROM_EMAIL ||
-          "noreply@boostflow.me",
+          "noreply@boostflow-thesis.me",
         cc: options.cc,
         bcc: options.bcc,
         subject: options.subject,

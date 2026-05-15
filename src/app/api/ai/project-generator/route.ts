@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenerativeAI, Schema, SchemaType } from "@google/generative-ai";
 import { isRateLimited } from "@/lib/rateLimit";
 
 interface TeamMemberInfo {
@@ -266,7 +266,7 @@ ${prompt}
       contents: [{ role: "user", parts: [{ text: generationPrompt }] }],
       generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: responseSchema as any,
+        responseSchema: responseSchema as Schema,
       },
     });
 

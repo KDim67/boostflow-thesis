@@ -5,7 +5,8 @@ import { createLogger } from "@/lib/utils/logger";
 
 const logger = createLogger("ContactAPI");
 
-const CONTACT_RECIPIENT = process.env.CONTACT_EMAIL || "support@boostflow.me";
+const CONTACT_RECIPIENT =
+  process.env.CONTACT_EMAIL || "support@boostflow-thesis.me";
 
 const VALID_SUBJECTS = new Set([
   "general",
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
       </div>
     `,
     text: `New Contact Form Submission\n\nName: ${name}\nEmail: ${email}\nSubject: ${subjectLabel}\nMessage:\n${message}`,
-    from: process.env.DEFAULT_FROM_EMAIL || "noreply@boostflow.me",
+    from: process.env.DEFAULT_FROM_EMAIL || "noreply@boostflow-thesis.me",
   });
 
   if (!result.success) {

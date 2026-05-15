@@ -361,7 +361,7 @@ function EmailActionHandlerContent() {
         {!result?.success && (
           <div className="text-center">
             <a
-              href={`${process.env.NEXT_PUBLIC_APP_URL || "https://boostflow.me"}/login`}
+              href={`${process.env.NEXT_PUBLIC_APP_URL || "https://boostflow-thesis.me"}/login`}
               className="font-medium text-blue-600 hover:text-blue-500"
             >
               Return to Login

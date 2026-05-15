@@ -9,7 +9,7 @@ pipeline {
     }
 
     parameters {
-        string(name: 'TARGET_URL', defaultValue: '', description: 'Optional target URL. If empty, STAGING_URL credential is used.')
+        string(name: 'TARGET_URL', defaultValue: '', description: 'Optional target URL. If empty, Vault secret/boostflow/ci/staging.url is used.')
         string(name: 'IMAGE_TAG', defaultValue: 'manual', description: 'Image tag associated with the deployed build.')
         string(name: 'SOURCE_BUILD_URL', defaultValue: 'manual', description: 'Main pipeline build URL.')
     }
@@ -19,7 +19,6 @@ pipeline {
         NUCLEI_IMAGE     = 'projectdiscovery/nuclei:v3.3.5'
         TESTSSL_IMAGE    = 'drwetter/testssl.sh:3.2'
         REPORTS_DIR      = 'security-reports'
-        STAGING_URL      = credentials('STAGING_URL')
     }
 
     stages {
@@ -29,9 +28,17 @@ pipeline {
                 checkout scm
                 sh "mkdir -p ${REPORTS_DIR}"
                 script {
-                    def selectedTarget = params.TARGET_URL?.trim() ? params.TARGET_URL.trim() : env.STAGING_URL
+                    def selectedTarget = params.TARGET_URL?.trim()
+                    if (!selectedTarget) {
+                        withVault([vaultSecrets: [
+                            [path: 'secret/boostflow/ci/staging', engineVersion: 2,
+                             secretValues: [[envVar: 'V_STAGING_URL', vaultKey: 'url']]]
+                        ]]) {
+                            selectedTarget = env.V_STAGING_URL
+                        }
+                    }
                     if (!selectedTarget?.trim()) {
-                        error 'TARGET_URL parameter or STAGING_URL credential is required'
+                        error 'TARGET_URL parameter or Vault secret/boostflow/ci/staging.url is required'
                     }
                     env.TARGET = selectedTarget.replaceAll('/+$', '')
                     env.TARGET_HOST = env.TARGET.replaceFirst('^https?://', '').replaceFirst('/.*$', '')
@@ -62,25 +69,43 @@ pipeline {
             }
             steps {
                 script {
-                    def maxAttempts = 18
-                    def matched = false
-                    def runningTag = ''
-                    for (int i = 0; i < maxAttempts; i++) {
-                        runningTag = sh(
-                            script: '''kubectl get deployment boostflow-app -n boostflow \
-                                -o jsonpath='{.spec.template.spec.containers[0].image}' \
-                                | awk -F: '{print $NF}' ''',
+                    def expectedDigest = ''
+                    withVault([vaultSecrets: [
+                        [path: 'secret/boostflow/ci/github', engineVersion: 2,
+                         secretValues: [[envVar: 'GITHUB_TOKEN', vaultKey: 'token']]]
+                    ]]) {
+                        sh """
+                            rm -rf boostflow-thesis-config
+                            git clone https://kdim67:\${GITHUB_TOKEN}@github.com/KDim67/boostflow-thesis-config.git boostflow-thesis-config
+                        """
+                        expectedDigest = sh(
+                            script: "grep 'image:' boostflow-thesis-config/app-deployment.yaml | awk '{print \$NF}'",
                             returnStdout: true
                         ).trim()
-                        if (runningTag == params.IMAGE_TAG) {
+                        sh "rm -rf boostflow-thesis-config"
+                    }
+
+                    echo "Expected digest from GitOps: ${expectedDigest}"
+
+                    def maxAttempts = 18
+                    def matched = false
+                    def runningImage = ''
+                    for (int i = 0; i < maxAttempts; i++) {
+                        runningImage = sh(
+                            script: '''kubectl get deployment boostflow-app -n boostflow \
+                                -o jsonpath='{.spec.template.spec.containers[0].image}' ''',
+                            returnStdout: true
+                        ).trim()
+                        
+                        if (runningImage == expectedDigest) {
                             matched = true
                             break
                         }
-                        echo "Running tag '${runningTag}' != expected '${params.IMAGE_TAG}'. Retrying in 10s..."
+                        echo "Running image '${runningImage}' != expected '${expectedDigest}'. Retrying in 10s (attempt ${i+1}/18)..."
                         sleep 10
                     }
                     if (!matched) {
-                        error "Deployed image tag '${runningTag}' does not match expected '${params.IMAGE_TAG}' after 3 minutes. Aborting DAST to avoid scanning a different build."
+                        error "Deployed image '${runningImage}' does not match expected '${expectedDigest}' (tag: ${params.IMAGE_TAG}) after 3 minutes. Aborting DAST to avoid scanning a different build."
                     }
 
                     sh """
@@ -88,7 +113,7 @@ pipeline {
                             -n boostflow --timeout=180s
                     """
 
-                    echo "Confirmed staging is running ${params.IMAGE_TAG}"
+                    echo "Confirmed staging is running ${params.IMAGE_TAG} (${expectedDigest})"
                 }
             }
         }
@@ -101,17 +126,53 @@ pipeline {
                     def zapResult = sh(
                         script: """
                             chmod 777 ${REPORTS_DIR}
-                            cp zap.conf ${REPORTS_DIR}/zap.conf
-                            docker run --rm \
-                                --memory=1g --memory-swap=1g \
-                                -v \$(pwd)/${REPORTS_DIR}:/zap/wrk:rw \
-                                --network host \
-                                ${ZAP_IMAGE} \
-                                zap-baseline.py \
-                                -t \${TARGET} \
-                                -r zap-report.html \
-                                -J zap-report.json \
-                                -c zap.conf
+                            
+                            # Clean up any residual container from prior failed run
+                            docker rm -f zap-scanner || true
+
+                             # Start ZAP in a detached placeholder container with an anonymous volume to satisfy ZAP's mount check
+                             # We increase container memory limit to 2g and cap the JVM max heap (-Xmx1536m) via ZAP_JVM_ARGS
+                             # to prevent the JVM from dynamically allocating 25% of host memory (10.5g) and crashing from OOM
+                             docker run -d --name zap-scanner \
+                                 --memory=2g --memory-swap=2g \
+                                 -e ZAP_JVM_ARGS="-Xmx1536m" \
+                                 --network host \
+                                 -v /zap/wrk \
+                                 --entrypoint "" \
+                                 ${ZAP_IMAGE} \
+                                 tail -f /dev/null
+
+                             # Securely change ownership of the mounted anonymous volume to the unprivileged 'zap' user (UID 1000)
+                             docker exec -u root zap-scanner chown -R zap:zap /zap/wrk
+
+                             # Copy the local configuration file directly into the mounted working directory and fix its ownership
+                             docker cp zap.conf zap-scanner:/zap/wrk/zap.conf
+                             docker exec -u root zap-scanner chown zap:zap /zap/wrk/zap.conf
+
+                             # Run ZAP scan strictly as the secure, unprivileged 'zap' user (Least Privilege Principle)
+                             # We enforce JVM max heap limit inside docker exec too. We unset/override proxy env vars and
+                             # explicitly set NO_PROXY/no_proxy to "localhost,127.0.0.1" (Python's requests library does not
+                             # support "*" as a wildcard for bypassing all proxies) to ensure direct loopback communication.
+                             exit_code=0
+                             docker exec -u zap \
+                                 -e ZAP_JVM_ARGS="-Xmx1536m" \
+                                 -e http_proxy="" -e https_proxy="" \
+                                 -e HTTP_PROXY="" -e HTTPS_PROXY="" \
+                                 -e no_proxy="localhost,127.0.0.1" -e NO_PROXY="localhost,127.0.0.1" \
+                                 zap-scanner zap-baseline.py \
+                                 -t \${TARGET} \
+                                 -r zap-report.html \
+                                 -J zap-report.json \
+                                 -c zap.conf --autooff || exit_code=\$?
+
+                            # Copy ZAP HTML and JSON reports out of the container
+                            docker cp zap-scanner:/zap/wrk/zap-report.html ${REPORTS_DIR}/zap-report.html || true
+                            docker cp zap-scanner:/zap/wrk/zap-report.json ${REPORTS_DIR}/zap-report.json || true
+
+                            # Stop and remove ZAP container
+                            docker rm -f zap-scanner
+
+                            exit \$exit_code
                         """,
                         returnStatus: true
                     )
@@ -135,17 +196,35 @@ pipeline {
                 echo 'Running Nuclei vulnerability scanning against staging...'
                 script {
                     sh """
-                        docker run --rm \
+                        # Clean up residual container
+                        docker rm -f nuclei-scanner || true
+
+                        # Start Nuclei in a detached placeholder container with template volume cache
+                        docker run -d --name nuclei-scanner \
                             --memory=1536m --memory-swap=1536m \
-                            -v \$(pwd)/${REPORTS_DIR}:/output \
                             -v nuclei-templates-cache:/root/nuclei-templates \
                             --network host \
+                            --entrypoint "" \
                             ${NUCLEI_IMAGE} \
-                            -u \${TARGET} \
-                            -stats \
-                            -severity medium,high,critical \
-                            -c 5 -rl 50 \
-                            -je /output/nuclei-report.json
+                            tail -f /dev/null
+
+                         # Run scan inside the container (bypassing corporate proxies to scan staging directly)
+                         docker exec \
+                             -e http_proxy="" -e https_proxy="" \
+                             -e HTTP_PROXY="" -e HTTPS_PROXY="" \
+                             -e no_proxy="localhost,127.0.0.1" -e NO_PROXY="localhost,127.0.0.1" \
+                             nuclei-scanner nuclei \
+                             -u \${TARGET} \
+                             -stats \
+                             -severity medium,high,critical \
+                             -c 5 -rl 50 \
+                             -je /nuclei-report.json || true
+
+                        # Copy JSON report out of the container
+                        docker cp nuclei-scanner:/nuclei-report.json ${REPORTS_DIR}/nuclei-report.json || true
+
+                        # Clean up container
+                        docker rm -f nuclei-scanner
                     """
 
                     def reportPath = "${REPORTS_DIR}/nuclei-report.json"
@@ -189,13 +268,31 @@ pipeline {
             steps {
                 echo 'Running testssl.sh TLS/SSL audit against staging...'
                 sh """
-                    docker run --rm \
+                    # Clean up residual container
+                    docker rm -f testssl-scanner || true
+
+                    # Start testssl.sh in a detached placeholder container
+                    docker run -d --name testssl-scanner \
                         --memory=512m --memory-swap=512m \
-                        -v \$(pwd)/${REPORTS_DIR}:/output \
                         --network host \
+                        --entrypoint "" \
                         ${TESTSSL_IMAGE} \
-                        --jsonfile /output/testssl-report.json \
-                        \${TARGET_HOST}
+                        tail -f /dev/null
+
+                    # Run TLS/SSL scan inside the container (bypassing corporate proxies to scan staging directly)
+                    docker exec \
+                        -e http_proxy="" -e https_proxy="" \
+                        -e HTTP_PROXY="" -e HTTPS_PROXY="" \
+                        -e no_proxy="localhost,127.0.0.1" -e NO_PROXY="localhost,127.0.0.1" \
+                        testssl-scanner testssl.sh \
+                        --jsonfile /home/testssl/testssl-report.json \
+                        \${TARGET_HOST} || true
+
+                    # Copy report out of the container
+                    docker cp testssl-scanner:/home/testssl/testssl-report.json ${REPORTS_DIR}/testssl-report.json || true
+
+                    # Clean up container
+                    docker rm -f testssl-scanner
                 """
             }
         }

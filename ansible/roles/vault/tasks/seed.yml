@@ -1,0 +1,36 @@
+---
+- name: Load Vault seed mapping
+  include_vars: "{{ role_path }}/defaults/main.yml"
+  when: vault_kv_paths is not defined
+
+- name: Build KV write payloads
+  set_fact:
+    _vault_seed_items: >-
+      {{ vault_kv_paths | dict2items
+         | rejectattr('value', 'eq', {})
+         | list }}
+
+- name: Fail when Vault seed values are empty
+  assert:
+    that:
+      - item.value | dict2items | selectattr('value', 'equalto', '') | list | length == 0
+    fail_msg: "Vault seed path boostflow/{{ item.key }} contains empty values."
+  loop: "{{ _vault_seed_items }}"
+  loop_control:
+    label: "boostflow/{{ item.key }}"
+
+- name: Seed KV v2 paths
+  shell: |
+    printf '%s' '{{ item.value | to_json }}' | kubectl exec -i -n {{ vault_namespace }} vault-0 -- \
+      sh -c 'VAULT_TOKEN={{ vault_root_token }} VAULT_ADDR=http://127.0.0.1:8200 vault kv put -mount={{ vault_kv_mount }} boostflow/{{ item.key }} -'
+  loop: "{{ _vault_seed_items }}"
+  loop_control:
+    label: "boostflow/{{ item.key }}"
+  no_log: true
+  changed_when: false
+
+- name: Seed Grafana admin password in Vault
+  shell: |
+    kubectl exec -n {{ vault_namespace }} vault-0 -- \
+      sh -c 'VAULT_TOKEN={{ vault_root_token }} VAULT_ADDR=http://127.0.0.1:8200 vault kv put -mount={{ vault_kv_mount }} monitoring/grafana admin_password=admin'
+  changed_when: false

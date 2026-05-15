@@ -150,7 +150,7 @@ export const resetPassword = async (email: string): Promise<void> => {
   try {
     // Configure where the password reset link should redirect
     const actionCodeSettings = {
-      url: `${process.env.NEXT_PUBLIC_APP_URL || "https://boostflow.me"}/auth-handler/auth/action`,
+      url: `${process.env.NEXT_PUBLIC_APP_URL || "https://boostflow-thesis.me"}/auth-handler/auth/action`,
       handleCodeInApp: true, // Handle the reset within our app rather than external browser
     };
 
@@ -236,7 +236,7 @@ export const sendVerificationEmail = async (user: User): Promise<void> => {
   try {
     // Configure where the verification link should redirect
     const actionCodeSettings = {
-      url: `${process.env.NEXT_PUBLIC_APP_URL || "https://boostflow.me"}/auth-handler/auth/action`,
+      url: `${process.env.NEXT_PUBLIC_APP_URL || "https://boostflow-thesis.me"}/auth-handler/auth/action`,
       handleCodeInApp: true, // Handle verification within our app
     };
 

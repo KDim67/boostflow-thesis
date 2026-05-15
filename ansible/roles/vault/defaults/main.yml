@@ -1,0 +1,57 @@
+---
+vault_init_file: "/home/{{ real_user.stdout }}/.vault-init.json"
+vault_pvc_size: 10Gi
+vault_storage_class: local-path
+vault_nodeport: 32200
+
+vault_kv_paths:
+  ci/github:
+    token: "{{ github_token | default('') }}"
+  ci/sonarqube:
+    token: "{{ sonarqube_token | default('') }}"
+    url: "{{ sonarqube_url | default('') }}"
+  ci/cosign:
+    password: "{{ cosign_password | default('') }}"
+    private_key: "{{ cosign_private_key | default('') }}"
+    public_key: "{{ cosign_public_key | default('') }}"
+  ci/staging:
+    url: "{{ staging_url | default('') }}"
+  build/firebase-public:
+    api_key: "{{ next_public_firebase_api_key | default('') }}"
+    auth_domain: "{{ next_public_firebase_auth_domain | default('') }}"
+    project_id: "{{ next_public_firebase_project_id | default('') }}"
+    storage_bucket: "{{ next_public_firebase_storage_bucket | default('') }}"
+    messaging_sender_id: "{{ next_public_firebase_messaging_sender_id | default('') }}"
+    app_id: "{{ next_public_firebase_app_id | default('') }}"
+    measurement_id: "{{ next_public_firebase_measurement_id | default('') }}"
+  build/oauth-public:
+    google_client_id: "{{ next_public_google_client_id | default('') }}"
+    github_client_id: "{{ next_public_github_client_id | default('') }}"
+    oauth_client_id: "{{ next_public_oauth_client_id | default('') }}"
+  build/misc:
+    google_maps_api_key: "{{ next_public_google_maps_api_key | default('') }}"
+    app_url: "{{ next_public_app_url | default('') }}"
+    node_env: "{{ node_env | default('production') }}"
+  runtime/firebase-admin:
+    service_account_key: "{{ firebase_service_account_key | default('') }}"
+  runtime/oauth:
+    google_client_id: "{{ google_client_id | default('') }}"
+    google_client_secret: "{{ google_client_secret | default('') }}"
+    github_client_id: "{{ github_client_id | default('') }}"
+    github_client_secret: "{{ github_client_secret | default('') }}"
+  runtime/gemini:
+    api_key: "{{ gemini_api_key | default('') }}"
+  runtime/minio:
+    endpoint: "minio.{{ app_namespace }}.svc.cluster.local:9000"
+    external_endpoint: "{{ minio_external_endpoint | default('') }}"
+    port: "{{ minio_port | default('9000') }}"
+    root_user: "{{ minio_root_user | default('') }}"
+    root_password: "{{ minio_root_password | default('') }}"
+    use_ssl: "{{ minio_use_ssl | default('false') }}"
+    profile_pictures_bucket: "{{ minio_profile_pictures_bucket | default('profile-pictures') }}"
+    project_documents_bucket: "{{ minio_project_documents_bucket | default('project-documents') }}"
+  runtime/mail:
+    mailhog_host: "{{ mailhog_host | default('') }}"
+    mailhog_port: "{{ mailhog_port | default('') }}"
+    default_from: "{{ default_from_email | default('') }}"
+    sendgrid_api_key: "{{ sendgrid_api_key | default('') }}"

@@ -36,11 +36,55 @@ interface SuggestedTeamMember {
   reason?: string;
 }
 
+interface AiTeamMemberPayload {
+  id: string;
+  name: string;
+  role: string;
+}
+
+interface GeneratedProjectData {
+  name?: string;
+  description?: string;
+  status?: string;
+  startDate?: string;
+  dueDate?: string;
+  client?: string;
+  budget?: string;
+  suggestedTasks?: unknown;
+  suggestedMilestones?: unknown;
+  suggestedTeam?: unknown;
+  error?: string;
+}
+
 const getTaskPriorityClass = (priority: SuggestedTask["priority"]) => {
   if (priority === "high") return "bg-red-100 text-red-800";
   if (priority === "medium") return "bg-yellow-100 text-yellow-800";
   return "bg-green-100 text-green-800";
 };
+
+const getAiTeamMembersPayload = async (
+  autoAssign: boolean,
+  organizationId: string | undefined
+): Promise<AiTeamMemberPayload[]> => {
+  if (!autoAssign || !organizationId) return [];
+
+  try {
+    const members = await getOrganizationMembers(organizationId);
+    return members.map((m) => ({
+      id: m.userId,
+      name: m.userProfile?.displayName || m.userProfile?.email || "Unknown",
+      role: m.role,
+    }));
+  } catch (err) {
+    console.warn("Could not fetch team members for AI assignment", err);
+    return [];
+  }
+};
+
+const getGenerationErrorMessage = (error: unknown) =>
+  error instanceof Error
+    ? error.message
+    : "Failed to generate project with AI. Please try again.";
 
 export default function NewProjectPage() {
   const { id } = useParams();
@@ -122,20 +166,10 @@ export default function NewProjectPage() {
       setIsGenerating(true);
       setError(null);
 
-      let teamMembersPayload: any[] = [];
-      if (autoAssign && organizationId) {
-        try {
-          const members = await getOrganizationMembers(organizationId);
-          teamMembersPayload = members.map((m) => ({
-            id: m.userId,
-            name:
-              m.userProfile?.displayName || m.userProfile?.email || "Unknown",
-            role: m.role,
-          }));
-        } catch (err) {
-          console.warn("Could not fetch team members for AI assignment", err);
-        }
-      }
+      const teamMembersPayload = await getAiTeamMembersPayload(
+        autoAssign,
+        organizationId
+      );
 
       const response = await fetch("/api/ai/project-generator", {
         method: "POST",
@@ -149,7 +183,7 @@ export default function NewProjectPage() {
         }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as GeneratedProjectData;
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to generate project");
@@ -166,22 +200,20 @@ export default function NewProjectPage() {
         budget: data.budget || "",
       }));
 
-      if (data.suggestedTasks && Array.isArray(data.suggestedTasks)) {
+      if (Array.isArray(data.suggestedTasks)) {
         setSuggestedTasks(data.suggestedTasks);
       }
-      if (data.suggestedMilestones && Array.isArray(data.suggestedMilestones)) {
+      if (Array.isArray(data.suggestedMilestones)) {
         setSuggestedMilestones(data.suggestedMilestones);
       }
-      if (data.suggestedTeam && Array.isArray(data.suggestedTeam)) {
+      if (Array.isArray(data.suggestedTeam)) {
         setSuggestedTeam(data.suggestedTeam);
       }
 
       setShowAiSection(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error generating project:", error);
-      setError(
-        error.message || "Failed to generate project with AI. Please try again."
-      );
+      setError(getGenerationErrorMessage(error));
     } finally {
       setIsGenerating(false);
     }

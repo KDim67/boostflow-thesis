@@ -36,6 +36,24 @@ helm_charts:
     name: kyverno
     version: 3.3.4
     namespace: kyverno
+  vault:
+    repo: https://helm.releases.hashicorp.com
+    name: vault
+    version: 0.28.1
+    namespace: vault
+  vault_secrets_operator:
+    repo: https://helm.releases.hashicorp.com
+    name: vault-secrets-operator
+    version: 0.9.1
+    namespace: vault-secrets-operator
+
+vault_namespace: vault
+vault_addr_internal: "http://vault.vault.svc:8200"
+vault_seed: false
+vault_kv_mount: secret
+vault_jenkins_token_file: "/home/{{ real_user.stdout }}/.vault-jenkins-token"
+vault_jenkins_token_period: "72h"
+vault_k8s_app_role_name: boostflow-app
 
 cosign_image_pattern: "ghcr.io/kdim67/boostflow*"
 

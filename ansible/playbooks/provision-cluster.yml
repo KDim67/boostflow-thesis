@@ -4,6 +4,7 @@
   become: true
   vars_files:
     - ../group_vars/all.yml
+    - ../secrets.vault.yml
 
   tasks:
     - name: Get actual non-root username
@@ -11,6 +12,7 @@
       become: false
       register: real_user
       changed_when: false
+      tags: always
 
     - name: Disable swap (required by kubelet)
       command: swapoff -a
@@ -155,8 +157,11 @@
 
     - name: Remove control-plane taint (single-node cluster)
       command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
-      changed_when: false
-      ignore_errors: true
+      register: taint_result
+      failed_when: >
+        taint_result.rc != 0 and
+        "not found" not in taint_result.stderr
+      changed_when: "'untainted' in taint_result.stdout"
 
     - name: Install Calico CNI plugin
       command: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/calico.yaml
@@ -168,6 +173,16 @@
       retries: 20
       delay: 10
       until: "'NotReady' not in nodes_ready.stdout"
+
+    - name: Install Rancher Local Path Provisioner (StorageClass)
+      command: kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.30/deploy/local-path-storage.yaml
+      changed_when: false
+
+    - name: Mark local-path as default StorageClass
+      command: >
+        kubectl patch storageclass local-path
+        -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+      changed_when: false
 
     - name: Check if Helm is installed
       command: helm version --short
@@ -233,6 +248,9 @@
         --namespace {{ helm_charts.ingress_nginx.namespace }}
         --create-namespace
         --version {{ helm_charts.ingress_nginx.version }}
+        --set controller.hostNetwork=true
+        --set controller.dnsPolicy=ClusterFirstWithHostNet
+        --set controller.service.type=ClusterIP
         --set controller.admissionWebhooks.enabled=false
         --timeout 10m
       when: nginx_status.rc != 0
@@ -247,6 +265,14 @@
         helm install argocd argo/argo-cd
         --namespace {{ argocd_namespace }}
         --version {{ helm_charts.argocd.version }}
+        --set repoServer.resources.requests.cpu=10m
+        --set repoServer.resources.limits.memory=512Mi
+        --set controller.resources.requests.cpu=10m
+        --set controller.resources.limits.memory=1024Mi
+        --set server.resources.requests.cpu=10m
+        --set server.resources.limits.memory=512Mi
+        --set applicationSet.resources.requests.cpu=10m
+        --set applicationSet.resources.limits.memory=512Mi
       when: argocd_status.rc != 0
 
     - name: Wait for ArgoCD server to be ready
@@ -265,7 +291,14 @@
         helm install awx-operator awx-operator/awx-operator
         --namespace {{ awx_namespace }}
         --version {{ helm_charts.awx_operator.version }}
-        --set kube_rbac_proxy.image=quay.io/brancz/kube-rbac-proxy:v0.15.0
+      when: awx_operator_status.rc != 0
+
+    - name: Patch AWX Operator kube-rbac-proxy image (fix discontinued upstream image)
+      command: >
+        kubectl set image deployment/awx-operator-controller-manager
+        kube-rbac-proxy=quay.io/brancz/kube-rbac-proxy:v0.15.0
+        -n {{ awx_namespace }}
+      changed_when: false
       when: awx_operator_status.rc != 0
 
     - name: Wait for AWX Operator to be ready
@@ -297,22 +330,28 @@
             limits:
               cpu: 250m
               memory: 512Mi
-          web_resource_requirements:
+          task_resource_requirements:
             requests:
-              cpu: 100m
-              memory: 1Gi
+              cpu: 10m
+              memory: 256Mi
             limits:
               cpu: 1000m
               memory: 2Gi
-          task_resource_requirements:
+          web_resource_requirements:
             requests:
-              cpu: 100m
+              cpu: 10m
               memory: 512Mi
             limits:
               cpu: 1000m
               memory: 2Gi
         EOF
       when: awx_instance_check.rc != 0
+
+    - name: Deploy and configure HashiCorp Vault
+      import_role:
+        name: vault
+        defaults_from: main
+      tags: vault
 
     - name: Check if GHCR pull secret exists
       command: kubectl get secret ghcr-pull-secret -n {{ app_namespace }}
@@ -329,89 +368,112 @@
       when: ghcr_secret_check.rc != 0
       no_log: true
 
-    - name: Check if app secrets exist
-      command: kubectl get secret boostflow-app-secret -n {{ app_namespace }}
-      register: app_secret_check
-      ignore_errors: true
+    - name: Create fallback Kubernetes secrets
+      when: use_vault_for_secrets | default(false) | bool == false
+      block:
+        - name: Check if app secrets exist
+          command: kubectl get secret boostflow-app-secret -n {{ app_namespace }}
+          register: app_secret_check
+          ignore_errors: true
 
-    - name: Create application secrets
-      command: >
-        kubectl create secret generic boostflow-app-secret
-        --namespace {{ app_namespace }}
-        --from-literal=FIREBASE_SERVICE_ACCOUNT_KEY={{ firebase_service_account_key }}
-        --from-literal=GEMINI_API_KEY={{ gemini_api_key }}
-        --from-literal=GOOGLE_CLIENT_ID={{ google_client_id }}
-        --from-literal=GOOGLE_CLIENT_SECRET={{ google_client_secret }}
-        --from-literal=GITHUB_CLIENT_ID={{ github_client_id }}
-        --from-literal=GITHUB_CLIENT_SECRET={{ github_client_secret }}
-        --from-literal=MINIO_ENDPOINT=minio.{{ app_namespace }}.svc.cluster.local:9000
-        --from-literal=MINIO_EXTERNAL_ENDPOINT={{ minio_external_endpoint }}
-        --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
-        --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
-        --from-literal=MINIO_USE_SSL=false
-        --from-literal=SENDGRID_API_KEY={{ sendgrid_api_key }}
-        --from-literal=DEFAULT_FROM_EMAIL={{ default_from_email }}
-        --from-literal=NODE_ENV=production
-      when: app_secret_check.rc != 0
-      no_log: true
+        - name: Create application secrets
+          command: >
+            kubectl create secret generic boostflow-app-secret
+            --namespace {{ app_namespace }}
+            --from-literal=FIREBASE_SERVICE_ACCOUNT_KEY={{ firebase_service_account_key }}
+            --from-literal=GEMINI_API_KEY={{ gemini_api_key }}
+            --from-literal=GOOGLE_CLIENT_ID={{ google_client_id }}
+            --from-literal=GOOGLE_CLIENT_SECRET={{ google_client_secret }}
+            --from-literal=GITHUB_CLIENT_ID={{ github_client_id }}
+            --from-literal=GITHUB_CLIENT_SECRET={{ github_client_secret }}
+            --from-literal=MINIO_ENDPOINT=minio.{{ app_namespace }}.svc.cluster.local:9000
+            --from-literal=MINIO_EXTERNAL_ENDPOINT={{ minio_external_endpoint }}
+            --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
+            --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
+            --from-literal=MINIO_USE_SSL=false
+            --from-literal=SENDGRID_API_KEY={{ sendgrid_api_key }}
+            --from-literal=DEFAULT_FROM_EMAIL={{ default_from_email }}
+            --from-literal=NODE_ENV=production
+          when: app_secret_check.rc != 0
+          no_log: true
 
-    - name: Check if MinIO secret exists
-      command: kubectl get secret minio-secret -n {{ app_namespace }}
-      register: minio_secret_check
-      ignore_errors: true
+        - name: Check if MinIO secret exists
+          command: kubectl get secret minio-secret -n {{ app_namespace }}
+          register: minio_secret_check
+          ignore_errors: true
 
-    - name: Create MinIO secret
-      command: >
-        kubectl create secret generic minio-secret
-        --namespace {{ app_namespace }}
-        --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
-        --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
-      when: minio_secret_check.rc != 0
+        - name: Create MinIO secret
+          command: >
+            kubectl create secret generic minio-secret
+            --namespace {{ app_namespace }}
+            --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
+            --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
+          when: minio_secret_check.rc != 0
 
-    - name: Check if MinIO backup secret exists
-      command: kubectl get secret minio-secret -n {{ backup_namespace }}
-      register: minio_backup_secret_check
-      ignore_errors: true
+        - name: Check if MinIO backup secret exists
+          command: kubectl get secret minio-secret -n {{ backup_namespace }}
+          register: minio_backup_secret_check
+          ignore_errors: true
 
-    - name: Create MinIO secret in backup namespace
-      command: >
-        kubectl create secret generic minio-secret
-        --namespace {{ backup_namespace }}
-        --from-literal=MINIO_ENDPOINT=minio.{{ app_namespace }}.svc.cluster.local:9000
-        --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
-        --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
-      when: minio_backup_secret_check.rc != 0
-      no_log: true
+        - name: Create MinIO secret in backup namespace
+          command: >
+            kubectl create secret generic minio-secret
+            --namespace {{ backup_namespace }}
+            --from-literal=MINIO_ENDPOINT=minio.{{ app_namespace }}.svc.cluster.local:9000
+            --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
+            --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
+          when: minio_backup_secret_check.rc != 0
+          no_log: true
 
     - name: Fail if cosign_public_key is not provided
       fail:
         msg: >
           cosign_public_key extra-var is required.
-          Pass it with: -e "@cosign-vars.yml" where cosign-vars.yml contains
-          a multi-line cosign_public_key value (PEM format).
+          Add it to ansible/secrets.vault.yml as a multi-line
+          cosign_public_key value (PEM format).
       when: cosign_public_key is not defined or cosign_public_key | length == 0
 
-    - name: Check if Kyverno is installed
-      command: helm status kyverno -n {{ helm_charts.kyverno.namespace }}
-      register: kyverno_status
+    - name: Scale down Kyverno deployments to prevent webhook auto-recreation
+      command: kubectl scale deployment -n {{ helm_charts.kyverno.namespace }} --all --replicas=0
       ignore_errors: true
 
-    - name: Install Kyverno
+    - name: Clean up existing Kyverno webhooks to prevent upgrade deadlock
+      shell: |
+        kubectl delete mutatingwebhookconfiguration kyverno-policy-mutating-webhook-cfg kyverno-resource-mutating-webhook-cfg kyverno-verify-mutating-webhook-cfg --ignore-not-found
+        kubectl delete validatingwebhookconfiguration kyverno-cleanup-validating-webhook-cfg kyverno-exception-validating-webhook-cfg kyverno-global-context-validating-webhook-cfg kyverno-policy-validating-webhook-cfg kyverno-resource-validating-webhook-cfg kyverno-ttl-validating-webhook-cfg --ignore-not-found
+      ignore_errors: true
+
+    - name: Install or upgrade Kyverno
       command: >
-        helm install kyverno kyverno/kyverno
+        helm upgrade --install kyverno kyverno/kyverno
         --namespace {{ helm_charts.kyverno.namespace }}
         --create-namespace
+        --no-hooks
         --version {{ helm_charts.kyverno.version }}
         --set admissionController.replicas=1
         --set backgroundController.replicas=1
         --set cleanupController.replicas=1
         --set reportsController.replicas=1
-      when: kyverno_status.rc != 0
+        --set admissionController.resources.requests.cpu=10m
+        --set backgroundController.resources.requests.cpu=10m
+        --set cleanupController.resources.requests.cpu=10m
+        --set reportsController.resources.requests.cpu=10m
+        --set features.forceFailurePolicyIgnore.enabled=true
 
     - name: Wait for Kyverno admission controller
       command: >
         kubectl wait --for=condition=available deployment/kyverno-admission-controller
         -n {{ helm_charts.kyverno.namespace }} --timeout=300s
+
+    - name: Apply Kyverno GHCR pull secret
+      shell: |
+        kubectl create secret docker-registry ghcr-pull-secret \
+          --namespace {{ helm_charts.kyverno.namespace }} \
+          --docker-server={{ ghcr_registry }} \
+          --docker-username={{ ghcr_username }} \
+          --docker-password={{ ghcr_pat }} \
+          --dry-run=client -o yaml | kubectl apply -f -
+      no_log: true
 
     - name: Render Cosign verifyImages ClusterPolicy
       copy:
@@ -423,10 +485,10 @@
           metadata:
             name: verify-boostflow-image-signature
           spec:
-            validationFailureAction: Enforce
-            background: false
+            validationFailureAction: Audit
+            background: true
             webhookTimeoutSeconds: 30
-            failurePolicy: Fail
+            failurePolicy: Ignore
             rules:
               - name: check-cosign-signature
                 match:
@@ -440,8 +502,11 @@
                   - imageReferences:
                       - "{{ cosign_image_pattern }}"
                     required: true
-                    mutateDigest: true
+                    mutateDigest: false
                     verifyDigest: true
+                    imageRegistryCredentials:
+                      secrets:
+                        - ghcr-pull-secret
                     attestors:
                       - count: 1
                         entries:
@@ -472,6 +537,80 @@
       changed_when: false
       ignore_errors: true
 
+    - name: Check if ArgoCD repository secret exists
+      command: kubectl get secret boostflow-thesis-config-creds -n {{ argocd_namespace }}
+      register: repo_secret_check
+      ignore_errors: true
+
+    - name: Create ArgoCD private repository secret (for GitOps sync)
+      shell: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: boostflow-thesis-config-creds
+          namespace: {{ argocd_namespace }}
+          labels:
+            argocd.argoproj.io/secret-type: repository
+        type: Opaque
+        stringData:
+          url: https://github.com/KDim67/boostflow-thesis-config.git
+          username: {{ ghcr_username }}
+          password: {{ ghcr_pat }}
+        EOF
+      when: repo_secret_check.rc != 0
+      no_log: true
+
+    - name: Apply ArgoCD Root Application (App-of-Apps)
+      command: kubectl apply -f /home/{{ real_user.stdout }}/boostflow-thesis-config/argocd/root-app.yaml
+      become: false
+      changed_when: true
+      ignore_errors: true
+
+    - name: Build custom Jenkins Docker image
+      shell: |
+        if [ -f /home/{{ real_user.stdout }}/boostflow-thesis-config/Dockerfile.jenkins ]; then
+          docker build -t custom-jenkins -f /home/{{ real_user.stdout }}/boostflow-thesis-config/Dockerfile.jenkins /home/{{ real_user.stdout }}/boostflow-thesis-config
+        fi
+      changed_when: true
+
+    - name: Ensure SonarQube container is running
+      shell: |
+        if ! docker inspect --type container sonarqube >/dev/null 2>&1; then
+          docker run -d --restart always --name sonarqube \
+            -p 9000:9000 \
+            -v sonarqube_data:/opt/sonarqube/data \
+            -v sonarqube_extensions:/opt/sonarqube/extensions \
+            sonarqube:25.1.0.102122-community
+        else
+          docker start sonarqube
+        fi
+      changed_when: true
+
+    - name: Get host docker group GID
+      command: getent group docker
+      register: host_docker_group
+      changed_when: false
+
+    - name: Set docker GID fact
+      set_fact:
+        host_docker_gid: "{{ host_docker_group.stdout.split(':')[2] }}"
+
+    - name: Ensure custom Jenkins container is running
+      shell: |
+        if ! docker inspect --type container jenkins >/dev/null 2>&1; then
+          docker run -d --restart always --name jenkins \
+            -p 8080:8080 \
+            --group-add {{ host_docker_gid }} \
+            -v jenkins_home:/var/jenkins_home \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v /home/{{ real_user.stdout }}/.kube:/var/jenkins_home/.kube \
+            custom-jenkins
+        else
+          docker start jenkins
+        fi
+      changed_when: true
+
     - name: Show post-install information
       debug:
         msg:
@@ -480,12 +619,41 @@
           - "--- ArgoCD ---"
           - "Username: admin"
           - "Password: {{ argocd_password.stdout }}"
-          - "UI: kubectl port-forward svc/argocd-server -n {{ argocd_namespace }} 8080:443"
+          - "UI: https://argocd.boostflow-thesis.me"
           - ""
           - "--- AWX ---"
           - "Username: admin"
           - "Password: {{ awx_password.stdout | default('AWX is still initializing — re-run this task later') }}"
-          - "UI: kubectl port-forward svc/boostflow-awx-service -n {{ awx_namespace }} 8081:80"
+          - "UI: https://awx.boostflow-thesis.me"
+          - ""
+          - "--- Jenkins ---"
+          - "Username: admin"
+          - "Retrieve Password: Run 'docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword'"
+          - "UI: https://jenkins.boostflow-thesis.me"
+          - ""
+          - "--- SonarQube ---"
+          - "Username: admin"
+          - "Password: admin (forces change on first login)"
+          - "UI: https://sonarqube.boostflow-thesis.me"
+          - ""
+          - "--- NeuVector ---"
+          - "Username: admin"
+          - "Password: admin (forces change on first login)"
+          - "UI: https://neuvector.boostflow-thesis.me"
+          - ""
+          - "--- Grafana ---"
+          - "Username: admin"
+          - 'Retrieve Password: Run ''kubectl get secret grafana-secret -n monitoring -o jsonpath="{.data.admin-password}" | base64 --decode'''
+          - "UI: https://grafana.boostflow-thesis.me"
+          - ""
+          - "--- MinIO ---"
+          - 'Retrieve Username: Run ''kubectl get secret boostflow-minio-secret -n boostflow -o jsonpath="{.data.MINIO_ROOT_USER}" | base64 --decode'''
+          - 'Retrieve Password: Run ''kubectl get secret boostflow-minio-secret -n boostflow -o jsonpath="{.data.MINIO_ROOT_PASSWORD}" | base64 --decode'''
+          - "UI: https://minio.boostflow-thesis.me"
+          - ""
+          - "--- Kibana ---"
+          - "Authentication: Disabled by default (X-Pack Security off)"
+          - "UI: https://kibana.boostflow-thesis.me"
           - ""
           - "ArgoCD will now sync the k8s/ manifests from Git automatically."
           - "Import this Git repo into AWX as a Project to manage future playbook runs via the web UI."

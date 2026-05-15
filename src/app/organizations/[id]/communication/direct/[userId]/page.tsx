@@ -34,6 +34,14 @@ import {
   QuerySnapshot,
   DocumentData,
 } from "firebase/firestore";
+import type { User as FirebaseUser } from "firebase/auth";
+
+interface ChatUserProfile {
+  displayName?: string;
+  email?: string;
+  photoURL?: string;
+  profilePicture?: string;
+}
 
 function processSnapshot(
   querySnapshot: QuerySnapshot<DocumentData>,
@@ -630,12 +638,19 @@ export default function DirectMessagePage() {
   );
 }
 
+interface UserAvatarProps {
+  user: ChatUserProfile | null;
+  className?: string;
+  textSize?: string;
+  getInitials: (user: ChatUserProfile | null) => string;
+}
+
 const UserAvatar = ({
   user,
   className = "",
   textSize = "text-sm",
   getInitials,
-}: any) => {
+}: UserAvatarProps) => {
   if (user?.profilePicture) {
     return (
       <img
@@ -665,6 +680,17 @@ const UserAvatar = ({
   );
 };
 
+interface MessageItemProps {
+  message: Message;
+  index: number;
+  messages: Message[];
+  user: FirebaseUser | null;
+  otherUser: ChatUserProfile | null;
+  currentUserProfile: ChatUserProfile | null;
+  getInitials: (user: ChatUserProfile | null) => string;
+  formatMessageTime: (date: Date) => string;
+}
+
 const MessageItem = ({
   message,
   index,
@@ -674,7 +700,7 @@ const MessageItem = ({
   currentUserProfile,
   getInitials,
   formatMessageTime,
-}: any) => {
+}: MessageItemProps) => {
   const showAvatar =
     index === 0 || messages[index - 1].author !== message.author;
   const isCurrentUser = message.author === user?.uid;
@@ -711,7 +737,9 @@ const MessageItem = ({
             }`}
           >
             <span className="font-semibold text-gray-900 dark:text-white">
-              {isCurrentUser ? "You" : otherUser.displayName || otherUser.email}
+              {isCurrentUser
+                ? "You"
+                : otherUser?.displayName || otherUser?.email}
             </span>
             <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
               {formatMessageTime(new Date(message.createdAt))}

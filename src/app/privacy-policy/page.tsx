@@ -209,10 +209,10 @@ const PrivacyPolicyPage = () => {
                 If you have any questions about this Privacy Policy, please
                 contact us at{" "}
                 <a
-                  href="mailto:privacy@boostflow.me"
+                  href="mailto:privacy@boostflow-thesis.me"
                   className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                 >
-                  privacy@boostflow.me
+                  privacy@boostflow-thesis.me
                 </a>
               </p>
               <div className="flex flex-col sm:flex-row gap-4">

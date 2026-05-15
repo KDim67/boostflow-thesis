@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Dispatch, SetStateAction } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/firebase/useAuth";
@@ -75,6 +75,24 @@ interface Project {
   milestones?: Milestone[];
   teamMembers?: TeamMember[];
   tasks?: Task[];
+}
+
+interface MilestoneFormData {
+  title: string;
+  description: string;
+  dueDate: string;
+  status: MilestoneStatus;
+}
+
+interface ProjectEditFormData {
+  name: string;
+  description: string;
+  status: string;
+  startDate: string;
+  dueDate: string;
+  client: string;
+  budget: string;
+  progress: number;
 }
 
 /**
@@ -176,8 +194,8 @@ const MilestoneModal = ({
   showMilestoneModal: boolean;
   setShowMilestoneModal: (show: boolean) => void;
   editingMilestone: Milestone | null;
-  milestoneForm: any;
-  setMilestoneForm: any;
+  milestoneForm: MilestoneFormData;
+  setMilestoneForm: Dispatch<SetStateAction<MilestoneFormData>>;
   handleSaveMilestone: () => void;
 }>) => {
   if (!showMilestoneModal) return null;
@@ -202,7 +220,7 @@ const MilestoneModal = ({
               type="text"
               value={milestoneForm.title}
               onChange={(e) =>
-                setMilestoneForm((prev: any) => ({
+                setMilestoneForm((prev) => ({
                   ...prev,
                   title: e.target.value,
                 }))
@@ -222,7 +240,7 @@ const MilestoneModal = ({
               id="description-tngqd"
               value={milestoneForm.description}
               onChange={(e) =>
-                setMilestoneForm((prev: any) => ({
+                setMilestoneForm((prev) => ({
                   ...prev,
                   description: e.target.value,
                 }))
@@ -244,7 +262,7 @@ const MilestoneModal = ({
               type="date"
               value={milestoneForm.dueDate}
               onChange={(e) =>
-                setMilestoneForm((prev: any) => ({
+                setMilestoneForm((prev) => ({
                   ...prev,
                   dueDate: e.target.value,
                 }))
@@ -263,9 +281,9 @@ const MilestoneModal = ({
               id="status-aebc0"
               value={milestoneForm.status}
               onChange={(e) =>
-                setMilestoneForm((prev: any) => ({
+                setMilestoneForm((prev) => ({
                   ...prev,
-                  status: e.target.value,
+                  status: e.target.value as MilestoneStatus,
                 }))
               }
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
@@ -307,8 +325,8 @@ const EditProjectModal = ({
   showEditModal: boolean;
   setShowEditModal: (show: boolean) => void;
   project: Project | null;
-  editForm: any;
-  setEditForm: any;
+  editForm: ProjectEditFormData;
+  setEditForm: Dispatch<SetStateAction<ProjectEditFormData>>;
   handleSaveProject: () => void;
 }>) => {
   if (!showEditModal || !project) return null;
@@ -332,7 +350,7 @@ const EditProjectModal = ({
               type="text"
               value={editForm.name}
               onChange={(e) =>
-                setEditForm((prev: any) => ({ ...prev, name: e.target.value }))
+                setEditForm((prev) => ({ ...prev, name: e.target.value }))
               }
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
               placeholder="Enter project name"
@@ -350,7 +368,7 @@ const EditProjectModal = ({
               id="description-5ppns"
               value={editForm.description}
               onChange={(e) =>
-                setEditForm((prev: any) => ({
+                setEditForm((prev) => ({
                   ...prev,
                   description: e.target.value,
                 }))
@@ -372,7 +390,7 @@ const EditProjectModal = ({
               id="status-gfvq7"
               value={editForm.status}
               onChange={(e) =>
-                setEditForm((prev: any) => ({
+                setEditForm((prev) => ({
                   ...prev,
                   status: e.target.value,
                 }))
@@ -399,7 +417,7 @@ const EditProjectModal = ({
                 type="date"
                 value={editForm.startDate}
                 onChange={(e) =>
-                  setEditForm((prev: any) => ({
+                  setEditForm((prev) => ({
                     ...prev,
                     startDate: e.target.value,
                   }))
@@ -420,7 +438,7 @@ const EditProjectModal = ({
                 value={editForm.dueDate}
                 min={editForm.startDate || undefined}
                 onChange={(e) =>
-                  setEditForm((prev: any) => ({
+                  setEditForm((prev) => ({
                     ...prev,
                     dueDate: e.target.value,
                   }))
@@ -443,7 +461,7 @@ const EditProjectModal = ({
                 type="text"
                 value={editForm.client}
                 onChange={(e) =>
-                  setEditForm((prev: any) => ({
+                  setEditForm((prev) => ({
                     ...prev,
                     client: e.target.value,
                   }))
@@ -464,7 +482,7 @@ const EditProjectModal = ({
                 type="text"
                 value={editForm.budget}
                 onChange={(e) =>
-                  setEditForm((prev: any) => ({
+                  setEditForm((prev) => ({
                     ...prev,
                     budget: e.target.value,
                   }))
@@ -489,7 +507,7 @@ const EditProjectModal = ({
               max="100"
               value={editForm.progress}
               onChange={(e) =>
-                setEditForm((prev: any) => ({
+                setEditForm((prev) => ({
                   ...prev,
                   progress: Number.parseInt(e.target.value),
                 }))
@@ -519,6 +537,27 @@ const EditProjectModal = ({
   );
 };
 
+interface ProjectOverviewTabProps {
+  project: Project;
+  tasks: Task[];
+  milestones: Milestone[];
+  canAccessAdvancedFeatures: boolean;
+  handleAddMilestone: () => void;
+  handleMilestoneStatusChange: (
+    milestoneId: string,
+    newStatus: MilestoneStatus
+  ) => Promise<void>;
+  handleEditMilestone: (milestone: Milestone) => void;
+  handleDeleteMilestone: (milestoneId: string) => Promise<void>;
+  handleTaskStatusChange: (
+    taskId: string,
+    newStatus: "pending" | "in-progress" | "completed"
+  ) => Promise<void>;
+  setActiveTab: (tab: string) => void;
+  organizationId: string | undefined;
+  projectId: string | string[] | undefined;
+}
+
 const ProjectOverviewTab = ({
   project,
   tasks,
@@ -532,7 +571,7 @@ const ProjectOverviewTab = ({
   setActiveTab,
   organizationId,
   projectId,
-}: any) => {
+}: ProjectOverviewTabProps) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Main Content */}
@@ -571,7 +610,7 @@ const ProjectOverviewTab = ({
           <div className="px-6 py-5">
             {milestones && milestones.length > 0 ? (
               <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                {milestones.map((milestone: any) => (
+                {milestones.map((milestone: Milestone) => (
                   <li key={milestone.id} className="py-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center flex-1">
@@ -687,7 +726,7 @@ const ProjectOverviewTab = ({
           <div className="px-6 py-5">
             {tasks && tasks.length > 0 ? (
               <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                {tasks.slice(0, 3).map((task: any) => (
+                {tasks.slice(0, 3).map((task: Task) => (
                   <li key={task.id} className="py-4 flex items-start">
                     <div className="mr-3 pt-1">
                       <input
@@ -797,7 +836,7 @@ const ProjectOverviewTab = ({
             {project.teamMembers && project.teamMembers.length > 0 ? (
               <>
                 <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {project.teamMembers.slice(0, 5).map((member: any) => (
+                  {project.teamMembers.slice(0, 5).map((member: TeamMember) => (
                     <li key={member.id} className="py-4 flex items-center">
                       <div className="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 mr-3">
                         {member.avatar ? (

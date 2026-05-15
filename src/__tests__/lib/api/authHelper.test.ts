@@ -104,7 +104,9 @@ describe("validateOrigin", () => {
   });
 
   it("returns true for production origin", () => {
-    const request = makeRequest(undefined, { origin: "https://boostflow.me" });
+    const request = makeRequest(undefined, {
+      origin: "https://boostflow-thesis.me",
+    });
     expect(validateOrigin(request)).toBe(true);
   });
 

@@ -19,7 +19,7 @@ pipeline {
 
         // Pinned scanner image versions
         GITLEAKS_IMAGE   = 'zricethezav/gitleaks:v8.21.2'
-        SEMGREP_IMAGE    = 'returntocorp/semgrep:1.95.0'
+        SEMGREP_IMAGE    = 'semgrep/semgrep:1.95.0'
         CHECKOV_IMAGE    = 'bridgecrew/checkov:3.2.256'
         CONFTEST_IMAGE   = 'openpolicyagent/conftest:v0.56.0'
         SONAR_IMAGE      = 'sonarsource/sonar-scanner-cli:11.1'
@@ -29,8 +29,6 @@ pipeline {
         
         // Report directories
         REPORTS_DIR = 'security-reports'
-        
-        STAGING_URL = credentials('STAGING_URL')
     }
     
     stages {
@@ -47,6 +45,19 @@ pipeline {
                 }
             }
         }
+
+        stage('Resolve Vault Secrets') {
+            steps {
+                script {
+                    withVault([vaultSecrets: [
+                        [path: 'secret/boostflow/ci/staging', engineVersion: 2,
+                         secretValues: [[envVar: 'V_STAGING_URL', vaultKey: 'url']]]
+                    ]]) {
+                        env.STAGING_URL = env.V_STAGING_URL
+                    }
+                }
+            }
+        }
         
         stage('Install Dependencies') {
             options { timeout(time: 10, unit: 'MINUTES') }
@@ -55,7 +66,7 @@ pipeline {
                 sh '''
                     node --version
                     npm --version
-                    npm ci
+                    npm ci --audit-level=critical
                 '''
             }
         }
@@ -101,14 +112,13 @@ pipeline {
                         script: """
                             docker run --rm \
                                 --memory=1g --memory-swap=1g \
-                                -v \$(pwd):/repo:ro \
-                                -v \$(pwd)/${REPORTS_DIR}:/reports \
-                                -w /repo \
+                                --volumes-from jenkins \
+                                -w \$(pwd) \
                                 ${GITLEAKS_IMAGE} \
                                 detect \
-                                --source /repo \
+                                --source . \
                                 --report-format sarif \
-                                --report-path /reports/gitleaks-report.sarif \
+                                --report-path ${REPORTS_DIR}/gitleaks-report.sarif \
                                 --redact
                         """,
                         returnStatus: true
@@ -132,12 +142,12 @@ pipeline {
                     def semgrepResult = sh(
                         script: """
                             docker run --rm \
-                                --memory=1g --memory-swap=1g \
-                                -v \$(pwd):/src:ro \
-                                -v \$(pwd)/${REPORTS_DIR}:/reports \
-                                -w /src \
+                                --memory=3g --memory-swap=3g \
+                                --volumes-from jenkins \
+                                -w \$(pwd) \
                                 ${SEMGREP_IMAGE} \
-                                semgrep \
+                                semgrep scan \
+                                --metrics=off \
                                 --config p/typescript \
                                 --config p/javascript \
                                 --config p/react \
@@ -149,8 +159,10 @@ pipeline {
                                 --exclude public \
                                 --exclude '*.test.ts' \
                                 --exclude '*.test.tsx' \
-                                --sarif \
-                                --output /reports/semgrep-report.sarif \
+                                --verbose \
+                                --sarif-output=${REPORTS_DIR}/semgrep-report.sarif \
+                                --json-output=${REPORTS_DIR}/semgrep-report.json \
+                                --text-output=${REPORTS_DIR}/semgrep-report.txt \
                                 --timeout 300 \
                                 --timeout-threshold 15 \
                                 --jobs 1 \
@@ -159,8 +171,16 @@ pipeline {
                         returnStatus: true
                     )
 
-                    if (semgrepResult != 0) {
-                        error 'Semgrep found potential security issues - check report'
+                    echo "Semgrep exit code: ${semgrepResult}"
+                    sh "ls -la ${REPORTS_DIR}/ || true"
+                    archiveArtifacts artifacts: "${REPORTS_DIR}/semgrep-report.*", allowEmptyArchive: true
+                    sh "test -f ${REPORTS_DIR}/semgrep-report.txt && (echo '--- Semgrep findings (text) ---'; tail -200 ${REPORTS_DIR}/semgrep-report.txt) || echo 'No semgrep text report produced'"
+
+                    // Exit codes: 0 = clean, 1 = findings, 2+ = error
+                    if (semgrepResult == 1) {
+                        error "Semgrep found potential security issues (exit=1) - see archived semgrep-report.*"
+                    } else if (semgrepResult != 0) {
+                        error "Semgrep crashed (exit=${semgrepResult}) - see console output above"
                     }
                     echo 'Semgrep scan completed - no critical issues'
                 }
@@ -175,9 +195,8 @@ pipeline {
                     sh """
                         docker run --rm \
                             --memory=1g --memory-swap=1g \
-                            -v \$(pwd)/Dockerfile:/tf/Dockerfile:ro \
-                            -v \$(pwd)/${REPORTS_DIR}:/tf/${REPORTS_DIR} \
-                            -w /tf \
+                            --volumes-from jenkins \
+                            -w \$(pwd) \
                             ${CHECKOV_IMAGE} \
                             --file Dockerfile \
                             --framework dockerfile \
@@ -209,8 +228,8 @@ pipeline {
                         script: """
                             docker run --rm \\
                                 --memory=512m --memory-swap=512m \\
-                                -v \$(pwd):/project:ro \\
-                                -w /project \\
+                                --volumes-from jenkins \\
+                                -w \$(pwd) \\
                                 ${CONFTEST_IMAGE} \\
                                 test Dockerfile --policy policies/ \\
                                 --parser dockerfile \\
@@ -225,7 +244,10 @@ pipeline {
                         unstable 'Conftest Dockerfile policy violations detected (see conftest-dockerfile.json)'
                     }
 
-                    withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
+                    withVault([vaultSecrets: [
+                        [path: 'secret/boostflow/ci/github', engineVersion: 2,
+                         secretValues: [[envVar: 'GITHUB_TOKEN', vaultKey: 'token']]]
+                    ]]) {
                         sh """
                             rm -rf boostflow-thesis-config
                             git clone https://${GITHUB_USER}:\${GITHUB_TOKEN}@github.com/${GITHUB_USER}/boostflow-thesis-config.git boostflow-thesis-config
@@ -236,8 +258,8 @@ pipeline {
                         script: """
                             docker run --rm \\
                                 --memory=512m --memory-swap=512m \\
-                                -v \$(pwd):/project:ro \\
-                                -w /project \\
+                                --volumes-from jenkins \\
+                                -w \$(pwd) \\
                                 ${CONFTEST_IMAGE} \\
                                 test boostflow-thesis-config/app-deployment.yaml boostflow-thesis-config/minio-statefulset.yaml \\
                                 --policy policies/ \\
@@ -269,20 +291,42 @@ pipeline {
             steps {
                 echo 'Running SonarQube code quality analysis...'
                 script {
-                    withCredentials([
-                        string(credentialsId: 'SONARQUBE_TOKEN', variable: 'SONAR_TOKEN'),
-                        string(credentialsId: 'SONARQUBE_URL', variable: 'SONAR_HOST_URL')
-                    ]) {
+                    withVault([vaultSecrets: [
+                        [path: 'secret/boostflow/ci/sonarqube', engineVersion: 2, secretValues: [
+                            [envVar: 'SONAR_TOKEN',     vaultKey: 'token'],
+                            [envVar: 'SONAR_HOST_URL',  vaultKey: 'url']
+                        ]]
+                    ]]) {
                         sh """
+                            set -e
+                            # Extract host and port from SONAR_HOST_URL dynamically
+                            SONAR_HOST=\$(echo "\$SONAR_HOST_URL" | sed -e 's|^[^/]*//||' -e 's|/.*\$||')
+                            case "\$SONAR_HOST" in
+                                *:* ) SONAR_CONNECT_ADDR="\$SONAR_HOST" ;;
+                                * )   SONAR_CONNECT_ADDR="\${SONAR_HOST}:443" ;;
+                            esac
+
+                            echo "Fetching SSL certificate from \$SONAR_CONNECT_ADDR..."
+                            echo | openssl s_client -showcerts -connect "\$SONAR_CONNECT_ADDR" 2>/dev/null | openssl x509 -outform PEM > sonar-server.crt
+
+                            echo "Generating temporary PKCS12 truststore..."
+                            rm -f sonar-truststore.p12
+                            keytool -import -trustcacerts -noprompt -alias sonar-server -file sonar-server.crt -keystore sonar-truststore.p12 -storetype PKCS12 -storepass changeit
+
+                            echo "Running SonarQube scan..."
                             docker run --rm \
                                 --memory=2g --memory-swap=2g \
-                                -v \$(pwd):/usr/src:ro \
+                                --network host \
+                                --volumes-from jenkins \
                                 -v sonar-scanner-cache:/opt/sonar-scanner/.sonar/cache \
-                                -w /usr/src \
+                                -w \$(pwd) \
                                 -e SONAR_HOST_URL=\$SONAR_HOST_URL \
                                 -e SONAR_TOKEN=\$SONAR_TOKEN \
-                                -e SONAR_SCANNER_JAVA_OPTS='-Xmx768m' \
+                                -e SONAR_SCANNER_JAVA_OPTS="-Djavax.net.ssl.trustStore=\$(pwd)/sonar-truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12 -Xmx768m" \
                                 ${SONAR_IMAGE}
+
+                            echo "Cleaning up temporary files..."
+                            rm -f sonar-server.crt sonar-truststore.p12
                         """
                     }
                     
@@ -296,42 +340,58 @@ pipeline {
             steps {
                 echo "Building Docker image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
                 script {
-                    withCredentials([
-                        string(credentialsId: 'FIREBASE_SERVICE_ACCOUNT_KEY', variable: 'FIREBASE_SERVICE_ACCOUNT_KEY'),
-                        string(credentialsId: 'NEXT_PUBLIC_APP_URL', variable: 'NEXT_PUBLIC_APP_URL'),
-                        string(credentialsId: 'NEXT_PUBLIC_GOOGLE_MAPS_API_KEY', variable: 'NEXT_PUBLIC_GOOGLE_MAPS_API_KEY'),
-                        string(credentialsId: 'NEXT_PUBLIC_FIREBASE_API_KEY', variable: 'NEXT_PUBLIC_FIREBASE_API_KEY'),
-                        string(credentialsId: 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN', variable: 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
-                        string(credentialsId: 'NEXT_PUBLIC_FIREBASE_PROJECT_ID', variable: 'NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
-                        string(credentialsId: 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET', variable: 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
-                        string(credentialsId: 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID', variable: 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
-                        string(credentialsId: 'NEXT_PUBLIC_FIREBASE_APP_ID', variable: 'NEXT_PUBLIC_FIREBASE_APP_ID'),
-                        string(credentialsId: 'NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID', variable: 'NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID'),
-                        string(credentialsId: 'GEMINI_API_KEY', variable: 'GEMINI_API_KEY'),
-                        string(credentialsId: 'NEXT_PUBLIC_GOOGLE_CLIENT_ID', variable: 'NEXT_PUBLIC_GOOGLE_CLIENT_ID'),
-                        string(credentialsId: 'NEXT_PUBLIC_GOOGLE_CLIENT_SECRET', variable: 'NEXT_PUBLIC_GOOGLE_CLIENT_SECRET'),
-                        string(credentialsId: 'NEXT_PUBLIC_GITHUB_CLIENT_ID', variable: 'NEXT_PUBLIC_GITHUB_CLIENT_ID'),
-                        string(credentialsId: 'NEXT_PUBLIC_GITHUB_CLIENT_SECRET', variable: 'NEXT_PUBLIC_GITHUB_CLIENT_SECRET'),
-                        string(credentialsId: 'GOOGLE_CLIENT_SECRET', variable: 'GOOGLE_CLIENT_SECRET'),
-                        string(credentialsId: 'GITHUB_CLIENT_SECRET', variable: 'GITHUB_CLIENT_SECRET'),
-                        string(credentialsId: 'GOOGLE_CLIENT_ID', variable: 'GOOGLE_CLIENT_ID'),
-                        string(credentialsId: 'GITHUB_CLIENT_ID', variable: 'GITHUB_CLIENT_ID'),
-                        string(credentialsId: 'NEXT_PUBLIC_OAUTH_CLIENT_ID', variable: 'NEXT_PUBLIC_OAUTH_CLIENT_ID'),
-                        string(credentialsId: 'MINIO_ENDPOINT', variable: 'MINIO_ENDPOINT'),
-                        string(credentialsId: 'MINIO_EXTERNAL_ENDPOINT', variable: 'MINIO_EXTERNAL_ENDPOINT'),
-                        string(credentialsId: 'MINIO_PORT', variable: 'MINIO_PORT'),
-                        string(credentialsId: 'MINIO_ROOT_USER', variable: 'MINIO_ROOT_USER'),
-                        string(credentialsId: 'MINIO_ROOT_PASSWORD', variable: 'MINIO_ROOT_PASSWORD'),
-                        string(credentialsId: 'MINIO_USE_SSL', variable: 'MINIO_USE_SSL'),
-                        string(credentialsId: 'MINIO_PROFILE_PICTURES_BUCKET', variable: 'MINIO_PROFILE_PICTURES_BUCKET'),
-                        string(credentialsId: 'MINIO_PROJECT_DOCUMENTS_BUCKET', variable: 'MINIO_PROJECT_DOCUMENTS_BUCKET'),
-                        string(credentialsId: 'MAILHOG_HOST', variable: 'MAILHOG_HOST'),
-                        string(credentialsId: 'MAILHOG_PORT', variable: 'MAILHOG_PORT'),
-                        string(credentialsId: 'DEFAULT_FROM_EMAIL', variable: 'DEFAULT_FROM_EMAIL'),
-                        string(credentialsId: 'SENDGRID_API_KEY', variable: 'SENDGRID_API_KEY'),
-                        string(credentialsId: 'NODE_ENV', variable: 'NODE_ENV'),
-                        string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')
-                    ]) {
+                    withVault([vaultSecrets: [
+                        [path: 'secret/boostflow/ci/github', engineVersion: 2, secretValues: [
+                            [envVar: 'GITHUB_TOKEN', vaultKey: 'token']
+                        ]],
+                        [path: 'secret/boostflow/build/firebase-public', engineVersion: 2, secretValues: [
+                            [envVar: 'NEXT_PUBLIC_FIREBASE_API_KEY',             vaultKey: 'api_key'],
+                            [envVar: 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',         vaultKey: 'auth_domain'],
+                            [envVar: 'NEXT_PUBLIC_FIREBASE_PROJECT_ID',          vaultKey: 'project_id'],
+                            [envVar: 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET',      vaultKey: 'storage_bucket'],
+                            [envVar: 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID', vaultKey: 'messaging_sender_id'],
+                            [envVar: 'NEXT_PUBLIC_FIREBASE_APP_ID',              vaultKey: 'app_id'],
+                            [envVar: 'NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID',      vaultKey: 'measurement_id']
+                        ]],
+                        [path: 'secret/boostflow/build/oauth-public', engineVersion: 2, secretValues: [
+                            [envVar: 'NEXT_PUBLIC_GOOGLE_CLIENT_ID', vaultKey: 'google_client_id'],
+                            [envVar: 'NEXT_PUBLIC_GITHUB_CLIENT_ID', vaultKey: 'github_client_id'],
+                            [envVar: 'NEXT_PUBLIC_OAUTH_CLIENT_ID',  vaultKey: 'oauth_client_id']
+                        ]],
+                        [path: 'secret/boostflow/build/misc', engineVersion: 2, secretValues: [
+                            [envVar: 'NEXT_PUBLIC_GOOGLE_MAPS_API_KEY', vaultKey: 'google_maps_api_key'],
+                            [envVar: 'NEXT_PUBLIC_APP_URL',             vaultKey: 'app_url'],
+                            [envVar: 'NODE_ENV',                        vaultKey: 'node_env']
+                        ]],
+                        [path: 'secret/boostflow/runtime/firebase-admin', engineVersion: 2, secretValues: [
+                            [envVar: 'FIREBASE_SERVICE_ACCOUNT_KEY', vaultKey: 'service_account_key']
+                        ]],
+                        [path: 'secret/boostflow/runtime/oauth', engineVersion: 2, secretValues: [
+                            [envVar: 'GOOGLE_CLIENT_ID',     vaultKey: 'google_client_id'],
+                            [envVar: 'GOOGLE_CLIENT_SECRET', vaultKey: 'google_client_secret'],
+                            [envVar: 'GITHUB_CLIENT_ID',     vaultKey: 'github_client_id'],
+                            [envVar: 'GITHUB_CLIENT_SECRET', vaultKey: 'github_client_secret']
+                        ]],
+                        [path: 'secret/boostflow/runtime/gemini', engineVersion: 2, secretValues: [
+                            [envVar: 'GEMINI_API_KEY', vaultKey: 'api_key']
+                        ]],
+                        [path: 'secret/boostflow/runtime/minio', engineVersion: 2, secretValues: [
+                            [envVar: 'MINIO_ENDPOINT',                vaultKey: 'endpoint'],
+                            [envVar: 'MINIO_EXTERNAL_ENDPOINT',       vaultKey: 'external_endpoint'],
+                            [envVar: 'MINIO_PORT',                    vaultKey: 'port'],
+                            [envVar: 'MINIO_ROOT_USER',               vaultKey: 'root_user'],
+                            [envVar: 'MINIO_ROOT_PASSWORD',           vaultKey: 'root_password'],
+                            [envVar: 'MINIO_USE_SSL',                 vaultKey: 'use_ssl'],
+                            [envVar: 'MINIO_PROFILE_PICTURES_BUCKET', vaultKey: 'profile_pictures_bucket'],
+                            [envVar: 'MINIO_PROJECT_DOCUMENTS_BUCKET', vaultKey: 'project_documents_bucket']
+                        ]],
+                        [path: 'secret/boostflow/runtime/mail', engineVersion: 2, secretValues: [
+                            [envVar: 'MAILHOG_HOST',       vaultKey: 'mailhog_host'],
+                            [envVar: 'MAILHOG_PORT',       vaultKey: 'mailhog_port'],
+                            [envVar: 'DEFAULT_FROM_EMAIL', vaultKey: 'default_from'],
+                            [envVar: 'SENDGRID_API_KEY',   vaultKey: 'sendgrid_api_key']
+                        ]]
+                    ]]) {
                         // Login to GHCR for BuildKit cache pull
                         sh 'echo $GITHUB_TOKEN | docker login ghcr.io -u ${GITHUB_USER} --password-stdin'
 
@@ -356,9 +416,7 @@ NEXT_PUBLIC_FIREBASE_APP_ID=${NEXT_PUBLIC_FIREBASE_APP_ID}
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID}
 GEMINI_API_KEY=${GEMINI_API_KEY}
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
-NEXT_PUBLIC_GOOGLE_CLIENT_SECRET=${NEXT_PUBLIC_GOOGLE_CLIENT_SECRET}
 NEXT_PUBLIC_GITHUB_CLIENT_ID=${NEXT_PUBLIC_GITHUB_CLIENT_ID}
-NEXT_PUBLIC_GITHUB_CLIENT_SECRET=${NEXT_PUBLIC_GITHUB_CLIENT_SECRET}
 GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
 GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
 GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
@@ -482,8 +540,11 @@ EOF
             steps {
                 echo 'Pushing Docker image to GitHub Container Registry...'
                 script {
-                    // Login to GHCR using GitHub token from credentials
-                    withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
+                    // Login to GHCR using GitHub token from Vault
+                    withVault([vaultSecrets: [
+                        [path: 'secret/boostflow/ci/github', engineVersion: 2,
+                         secretValues: [[envVar: 'GITHUB_TOKEN', vaultKey: 'token']]]
+                    ]]) {
                         sh '''
                             echo $GITHUB_TOKEN | docker login ghcr.io -u ${GITHUB_USER} --password-stdin
                         '''
@@ -514,39 +575,39 @@ EOF
             steps {
                 echo 'Signing Docker image with Cosign...'
                 script {
-                    withCredentials([
-                        file(credentialsId: 'COSIGN_PRIVATE_KEY', variable: 'COSIGN_KEY_FILE'),
-                        file(credentialsId: 'COSIGN_PUBLIC_KEY', variable: 'COSIGN_PUB_FILE'),
-                        string(credentialsId: 'COSIGN_PASSWORD', variable: 'COSIGN_PASSWORD'),
-                        string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')
-                    ]) {
-                        // Sign by digest with registry credentials
-                        sh """
-                            export COSIGN_REPOSITORY=${FULL_IMAGE_NAME}
-                            cosign login ghcr.io -u ${GITHUB_USER} -p \$GITHUB_TOKEN
-                            cosign sign --yes --key \$COSIGN_KEY_FILE ${env.IMAGE_DIGEST}
-                        """
-
-                        // Verify signature
-                        sh """
-                            export COSIGN_REPOSITORY=${FULL_IMAGE_NAME}
-                            cosign verify --key \$COSIGN_PUB_FILE ${env.IMAGE_DIGEST}
-                        """
-
-                        // Attach SBOM as a signed CycloneDX attestation
-                        sh """
-                            export COSIGN_REPOSITORY=${FULL_IMAGE_NAME}
+                    withVault([vaultSecrets: [
+                        [path: 'secret/boostflow/ci/cosign', engineVersion: 2, secretValues: [
+                            [envVar: 'COSIGN_KEY',      vaultKey: 'private_key'],
+                            [envVar: 'COSIGN_PUB',      vaultKey: 'public_key'],
+                            [envVar: 'COSIGN_PASSWORD', vaultKey: 'password']
+                        ]],
+                        [path: 'secret/boostflow/ci/github', engineVersion: 2, secretValues: [
+                            [envVar: 'GITHUB_TOKEN', vaultKey: 'token']
+                        ]]
+                    ]]) {
+                        sh '''
+                            set -e
+                            umask 077
+                            mkdir -p .cosign
+                            trap 'rm -rf .cosign' EXIT INT TERM
+                            printf %s "$COSIGN_KEY" > .cosign/cosign.key
+                            printf %s "$COSIGN_PUB" > .cosign/cosign.pub
+                            export COSIGN_KEY_FILE=$(pwd)/.cosign/cosign.key
+                            export COSIGN_PUB_FILE=$(pwd)/.cosign/cosign.pub
+                            export COSIGN_REPOSITORY='''+FULL_IMAGE_NAME+'''
+                            cosign login ghcr.io -u '''+GITHUB_USER+''' -p $GITHUB_TOKEN
+                            cosign sign --yes --key $COSIGN_KEY_FILE '''+env.IMAGE_DIGEST+'''
+                            cosign verify --key $COSIGN_PUB_FILE '''+env.IMAGE_DIGEST+'''
                             cosign attest --yes \
-                                --key \$COSIGN_KEY_FILE \
+                                --key $COSIGN_KEY_FILE \
                                 --type cyclonedx \
-                                --predicate ${REPORTS_DIR}/sbom-image.cyclonedx.json \
-                                ${env.IMAGE_DIGEST}
+                                --predicate '''+REPORTS_DIR+'''/sbom-image.cyclonedx.json \
+                                '''+env.IMAGE_DIGEST+'''
                             cosign verify-attestation \
-                                --key \$COSIGN_PUB_FILE \
+                                --key $COSIGN_PUB_FILE \
                                 --type cyclonedx \
-                                ${env.IMAGE_DIGEST} > /dev/null
-                        """
-
+                                '''+env.IMAGE_DIGEST+''' > /dev/null
+                        '''
                         echo 'Image signed, attested and verified successfully with Cosign'
                     }
                 }
@@ -558,13 +619,17 @@ EOF
             steps {
                 echo 'Generating and attaching SLSA provenance attestation...'
                 script {
-                    withCredentials([
-                        file(credentialsId: 'COSIGN_PRIVATE_KEY', variable: 'COSIGN_KEY_FILE'),
-                        file(credentialsId: 'COSIGN_PUBLIC_KEY', variable: 'COSIGN_PUB_FILE'),
-                        string(credentialsId: 'COSIGN_PASSWORD', variable: 'COSIGN_PASSWORD'),
-                        string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')
-                    ]) {
-                        def buildStartedAt = sh(script: 'date -u +%Y-%m-%dT%H:%M:%SZ', returnStdout: true).trim()
+                    withVault([vaultSecrets: [
+                        [path: 'secret/boostflow/ci/cosign', engineVersion: 2, secretValues: [
+                            [envVar: 'COSIGN_KEY',      vaultKey: 'private_key'],
+                            [envVar: 'COSIGN_PUB',      vaultKey: 'public_key'],
+                            [envVar: 'COSIGN_PASSWORD', vaultKey: 'password']
+                        ]],
+                        [path: 'secret/boostflow/ci/github', engineVersion: 2, secretValues: [
+                            [envVar: 'GITHUB_TOKEN', vaultKey: 'token']
+                        ]]
+                    ]]) {
+                        def buildStartedAt = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone("UTC"))
                         def gitFullCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
                         def gitRemote = sh(script: 'git config --get remote.origin.url', returnStdout: true).trim()
 
@@ -595,19 +660,27 @@ EOF
 }
 """
 
-                        sh """
-                            export COSIGN_REPOSITORY=${FULL_IMAGE_NAME}
-                            cosign login ghcr.io -u ${GITHUB_USER} -p \$GITHUB_TOKEN
+                        sh '''
+                            set -e
+                            umask 077
+                            mkdir -p .cosign
+                            trap 'rm -rf .cosign' EXIT INT TERM
+                            printf %s "$COSIGN_KEY" > .cosign/cosign.key
+                            printf %s "$COSIGN_PUB" > .cosign/cosign.pub
+                            export COSIGN_KEY_FILE=$(pwd)/.cosign/cosign.key
+                            export COSIGN_PUB_FILE=$(pwd)/.cosign/cosign.pub
+                            export COSIGN_REPOSITORY='''+FULL_IMAGE_NAME+'''
+                            cosign login ghcr.io -u '''+GITHUB_USER+''' -p $GITHUB_TOKEN
                             cosign attest --yes \
-                                --key \$COSIGN_KEY_FILE \
+                                --key $COSIGN_KEY_FILE \
                                 --type slsaprovenance \
-                                --predicate ${REPORTS_DIR}/slsa-provenance.json \
-                                ${env.IMAGE_DIGEST}
+                                --predicate '''+REPORTS_DIR+'''/slsa-provenance.json \
+                                '''+env.IMAGE_DIGEST+'''
                             cosign verify-attestation \
-                                --key \$COSIGN_PUB_FILE \
+                                --key $COSIGN_PUB_FILE \
                                 --type slsaprovenance \
-                                ${env.IMAGE_DIGEST} > /dev/null
-                        """
+                                '''+env.IMAGE_DIGEST+''' > /dev/null
+                        '''
                         echo 'SLSA provenance attached and verified'
                     }
                 }
@@ -618,19 +691,22 @@ EOF
             steps {
                 echo 'Updating Kubernetes manifest in config repo...'
                 script {
-                    withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
+                    withVault([vaultSecrets: [
+                        [path: 'secret/boostflow/ci/github', engineVersion: 2,
+                         secretValues: [[envVar: 'GITHUB_TOKEN', vaultKey: 'token']]]
+                    ]]) {
                         sh """
                             rm -rf boostflow-thesis-config
                             git clone https://${GITHUB_USER}:\${GITHUB_TOKEN}@github.com/${GITHUB_USER}/boostflow-thesis-config.git boostflow-thesis-config
 
                             cd boostflow-thesis-config
-                            git config user.email "jenkins@boostflow.me"
+                            git config user.email "jenkins@boostflow-thesis.me"
                             git config user.name "Jenkins CI"
 
-                            sed -i 's|image: ${FULL_IMAGE_NAME}:.*|image: ${FULL_IMAGE_NAME}:${IMAGE_TAG}|' app-deployment.yaml
+                            sed -i 's|image: ${FULL_IMAGE_NAME}[@:].*|image: ${IMAGE_DIGEST}|' app-deployment.yaml
 
                             git add app-deployment.yaml
-                            git commit -m "deploy: ${IMAGE_TAG}"
+                            git commit -m "deploy: ${IMAGE_TAG} (${IMAGE_DIGEST})"
                             git push origin main
 
                             cd ..
@@ -649,26 +725,31 @@ EOF
             steps {
                 echo 'Waiting for ArgoCD to sync and staging deployment to be ready...'
                 script {
-                    def tagMatched = false
-                    def runningTag = ''
+                    def imageMatched = false
+                    def runningImage = ''
+                    def runningImageId = ''
                     for (int i = 0; i < 36; i++) {
-                        runningTag = sh(
+                        runningImage = sh(
                             script: '''kubectl get deployment boostflow-app -n boostflow \
-                                -o jsonpath='{.spec.template.spec.containers[0].image}' \
-                                | awk -F: '{print $NF}' ''',
+                                -o jsonpath='{.spec.template.spec.containers[0].image}' ''',
                             returnStdout: true
                         ).trim()
-                        if (runningTag == env.IMAGE_TAG) {
-                            tagMatched = true
+                        runningImageId = sh(
+                            script: '''kubectl get pods -n boostflow -l app=boostflow-app \
+                                -o jsonpath='{.items[0].status.containerStatuses[0].imageID}' 2>/dev/null || true''',
+                            returnStdout: true
+                        ).trim()
+                        if (runningImage == env.IMAGE_DIGEST || runningImageId.endsWith(env.IMAGE_DIGEST.replace("${FULL_IMAGE_NAME}@", "@"))) {
+                            imageMatched = true
                             break
                         }
-                        echo "Running tag '${runningTag}' != expected '${env.IMAGE_TAG}'. Waiting for ArgoCD to sync (attempt ${i+1}/36)..."
+                        echo "Running image '${runningImage}' with imageID '${runningImageId}' != expected '${env.IMAGE_DIGEST}'. Waiting for ArgoCD to sync (attempt ${i+1}/36)..."
                         sleep 10
                     }
-                    if (!tagMatched) {
-                        error "ArgoCD did not sync image tag '${env.IMAGE_TAG}' within 6 minutes (still showing '${runningTag}'). Check ArgoCD application state."
+                    if (!imageMatched) {
+                        error "ArgoCD did not sync image digest '${env.IMAGE_DIGEST}' within 6 minutes (still showing image '${runningImage}' and imageID '${runningImageId}'). Check ArgoCD application state."
                     }
-                    echo "ArgoCD synced to ${env.IMAGE_TAG}"
+                    echo "ArgoCD synced to ${env.IMAGE_DIGEST}"
 
                     sh """
                         kubectl rollout status deployment/boostflow-app \
@@ -702,31 +783,24 @@ EOF
         stage('Compliance - CIS Benchmark') {
             options { timeout(time: 10, unit: 'MINUTES') }
             steps {
-                echo 'Running kube-bench CIS Kubernetes Benchmark...'
+                echo 'Triggering ArgoCD-managed kube-bench CronJob and collecting report...'
                 script {
-                    withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
-                        sh """
-                            rm -rf boostflow-thesis-config
-                            git clone https://${GITHUB_USER}:\${GITHUB_TOKEN}@github.com/${GITHUB_USER}/boostflow-thesis-config.git boostflow-thesis-config
-                        """
-                    }
-
+                    def jobName = "kube-bench-ci-${env.BUILD_NUMBER}"
                     def benchStatus = sh(
-                        script: '''
+                        script: """
                             set -e
-                            kubectl -n compliance delete job kube-bench --ignore-not-found
-                            kubectl apply -f boostflow-thesis-config/compliance/kube-bench-job.yaml
-                            kubectl -n compliance wait --for=condition=complete --timeout=300s job/kube-bench || true
-                            kubectl -n compliance logs job/kube-bench --all-containers=true > ''' + "${REPORTS_DIR}/kube-bench.json" + ''' || true
-                            kubectl -n compliance get job kube-bench -o yaml > ''' + "${REPORTS_DIR}/kube-bench-job.yaml" + ''' || true
-                            kubectl -n compliance get pods -l job-name=kube-bench -o yaml > ''' + "${REPORTS_DIR}/kube-bench-pods.yaml" + ''' || true
-                            kubectl -n compliance get events --sort-by=.lastTimestamp > ''' + "${REPORTS_DIR}/kube-bench-events.txt" + ''' || true
-                            kubectl -n compliance get job kube-bench -o jsonpath='{.status.succeeded}' | grep -q '^1$'
-                        ''',
+                            kubectl -n compliance create job ${jobName} --from=cronjob/kube-bench
+                            kubectl -n compliance wait --for=condition=complete --timeout=300s job/${jobName} || true
+                            kubectl -n compliance logs job/${jobName} --all-containers=true > ${REPORTS_DIR}/kube-bench.json || true
+                            kubectl -n compliance get job ${jobName} -o yaml > ${REPORTS_DIR}/kube-bench-job.yaml || true
+                            kubectl -n compliance get pods -l job-name=${jobName} -o yaml > ${REPORTS_DIR}/kube-bench-pods.yaml || true
+                            kubectl -n compliance get events --sort-by=.lastTimestamp > ${REPORTS_DIR}/kube-bench-events.txt || true
+                            kubectl -n compliance get job ${jobName} -o jsonpath='{.status.succeeded}' | grep -q '^1\$'
+                        """,
                         returnStatus: true
                     )
 
-                    sh 'rm -rf boostflow-thesis-config'
+                    sh "kubectl -n compliance delete job ${jobName} --ignore-not-found"
 
                     if (benchStatus != 0) {
                         unstable 'kube-bench job did not complete cleanly (see kube-bench.json)'
@@ -759,7 +833,7 @@ EOF
             junit testResults: 'coverage/junit.xml', allowEmptyResults: true
 
             // Archive all security reports
-            archiveArtifacts artifacts: "${REPORTS_DIR}/**/*", allowEmptyArchive: true
+            archiveArtifacts artifacts: "${REPORTS_DIR}/*", allowEmptyArchive: true
             
             // Publish HTML reports
             publishHTML([

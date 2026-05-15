@@ -32,13 +32,13 @@ tags = ["sendgrid", "api-key"]
 [[rules]]
 id = "github-oauth-secret"
 description = "GitHub OAuth Client Secret"
-regex = '''(?i)(github[_-]?client[_-]?secret|next_public_github_client_secret)\s*[:=]\s*['\"]?([a-f0-9]{40})['\"]?'''
+regex = '''(?i)github[_-]?client[_-]?secret\s*[:=]\s*['\"]?([a-f0-9]{40})['\"]?'''
 tags = ["github", "oauth", "secret"]
 
 [[rules]]
 id = "google-oauth-secret"
 description = "Google OAuth Client Secret"
-regex = '''(?i)(google[_-]?client[_-]?secret|next_public_google_client_secret)\s*[:=]\s*['\"]?([A-Za-z0-9_\-]{24,})['\"]?'''
+regex = '''(?i)google[_-]?client[_-]?secret\s*[:=]\s*['\"]?([A-Za-z0-9_\-]{24,})['\"]?'''
 tags = ["google", "oauth", "secret"]
 
 [[rules]]

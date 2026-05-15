@@ -28,13 +28,38 @@ export default function LayoutWrapper({
   const shouldCheckSuspension = !isSuspendedPage && !isAuthPage;
   useSuspensionCheck(shouldCheckSuspension);
 
+  // Define full-bleed marketing/auth pages where background should bleed to the top under the floating pill
+  const isFullBleedPage =
+    pathname === "/" ||
+    pathname === "/features" ||
+    pathname === "/pricing" ||
+    pathname === "/contact" ||
+    pathname === "/demo" ||
+    pathname === "/about" ||
+    pathname === "/careers" ||
+    pathname === "/privacy-policy" ||
+    pathname === "/terms-of-service" ||
+    pathname === "/documentation" ||
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname?.startsWith("/forgot-password") ||
+    pathname?.startsWith("/verify-email") ||
+    pathname?.startsWith("/auth-handler") ||
+    pathname === "/suspended";
+
+  // Determine main element CSS classes based on layout rules
+  let mainClassName = "flex-grow";
+  if (isAdminPanel) {
+    mainClassName = "";
+  } else if (!isFullBleedPage) {
+    mainClassName = "flex-grow pt-28";
+  }
+
   return (
     <>
       {/* Hide navbar on admin panel pages */}
       {!isAdminPanel && <Navbar />}
-      <main className={isAdminPanel ? "" : "flex-grow pt-16 md:pt-20"}>
-        {children}
-      </main>
+      <main className={mainClassName}>{children}</main>
       {/* Hide footer on admin panel pages */}
       {!isAdminPanel && <Footer />}
     </>

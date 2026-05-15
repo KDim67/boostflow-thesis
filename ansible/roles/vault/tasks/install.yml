@@ -1,0 +1,166 @@
+---
+- name: Add HashiCorp Helm repo
+  command: "helm repo add hashicorp {{ helm_charts.vault.repo }}"
+  register: vault_repo_add
+  changed_when: "'has been added' in vault_repo_add.stdout"
+  failed_when: vault_repo_add.rc != 0 and 'already exists' not in vault_repo_add.stderr
+
+- name: Update Helm repos
+  command: helm repo update hashicorp
+  changed_when: false
+
+- name: Create Vault namespace
+  command: "kubectl create namespace {{ vault_namespace }}"
+  register: vault_ns
+  failed_when: vault_ns.rc != 0 and 'already exists' not in vault_ns.stderr
+  changed_when: "'created' in vault_ns.stdout"
+
+- name: Render Vault Helm values
+  copy:
+    dest: /tmp/vault-values.yaml
+    mode: "0600"
+    content: |
+      global:
+        tlsDisable: true
+      server:
+        service:
+          type: NodePort
+          nodePort: {{ vault_nodeport }}
+        standalone:
+          enabled: true
+          config: |
+            ui = true
+            listener "tcp" {
+              tls_disable = 1
+              address = "[::]:8200"
+              cluster_address = "[::]:8201"
+            }
+            storage "raft" {
+              path = "/vault/data"
+            }
+            disable_mlock = true
+            api_addr = "{{ vault_addr_internal }}"
+            cluster_addr = "http://127.0.0.1:8201"
+        ha:
+          enabled: false
+        dataStorage:
+          enabled: true
+          size: {{ vault_pvc_size }}
+          storageClass: {{ vault_storage_class }}
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      injector:
+        enabled: false
+      ui:
+        enabled: true
+
+- name: Check if Vault Helm release exists
+  command: "helm status vault -n {{ vault_namespace }}"
+  register: vault_helm_status
+  ignore_errors: true
+  changed_when: false
+
+- name: Install or upgrade Vault via Helm
+  command: >
+    helm upgrade --install vault hashicorp/vault
+    --namespace {{ vault_namespace }}
+    --version {{ helm_charts.vault.version }}
+    -f /tmp/vault-values.yaml
+
+- name: Wait for Vault pod to exist
+  command: kubectl get pod vault-0 -n {{ vault_namespace }}
+  register: vault_pod_exists
+  retries: 30
+  delay: 5
+  until: vault_pod_exists.rc == 0
+  changed_when: false
+
+- name: Remove rendered values file
+  file:
+    path: /tmp/vault-values.yaml
+    state: absent
+
+- name: Check if Vault Secrets Operator is installed
+  command: "helm status vault-secrets-operator -n {{ helm_charts.vault_secrets_operator.namespace }}"
+  register: vso_status
+  ignore_errors: true
+  changed_when: false
+
+- name: Create VSO namespace
+  command: "kubectl create namespace {{ helm_charts.vault_secrets_operator.namespace }}"
+  register: vso_ns
+  failed_when: vso_ns.rc != 0 and 'already exists' not in vso_ns.stderr
+  changed_when: "'created' in vso_ns.stdout"
+  when: vso_status.rc != 0
+
+- name: Apply Vault Secrets Operator
+  command: >
+    helm upgrade --install vault-secrets-operator hashicorp/vault-secrets-operator
+    --namespace {{ helm_charts.vault_secrets_operator.namespace }}
+    --version {{ helm_charts.vault_secrets_operator.version }}
+    --no-hooks
+    --timeout 10m
+    --cleanup-on-fail
+    --set defaultVaultConnection.enabled=true
+    --set defaultVaultConnection.address={{ vault_addr_internal }}
+    --set defaultVaultConnection.skipTLSVerify=true
+    --set controller.manager.resources.requests.cpu=50m
+    --set controller.manager.resources.requests.memory=128Mi
+    --set controller.manager.resources.limits.cpu=500m
+    --set controller.manager.resources.limits.memory=512Mi
+    --set controller.kubeRbacProxy.resources.requests.cpu=5m
+    --set controller.kubeRbacProxy.resources.requests.memory=64Mi
+    --set controller.kubeRbacProxy.resources.limits.cpu=500m
+    --set controller.kubeRbacProxy.resources.limits.memory=128Mi
+
+- name: Render VSO probe patch file
+  copy:
+    dest: /tmp/vso-probe-patch.json
+    mode: "0600"
+    content: "{{ vso_probe_patch | to_nice_json }}"
+  vars:
+    vso_probe_patch:
+      - op: replace
+        path: /spec/template/spec/containers/1/livenessProbe
+        value:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 6
+      - op: replace
+        path: /spec/template/spec/containers/1/readinessProbe
+        value:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 6
+
+- name: Patch VSO controller probes
+  command: >
+    kubectl -n {{ helm_charts.vault_secrets_operator.namespace }}
+    patch deployment vault-secrets-operator-controller-manager
+    --type=json --patch-file=/tmp/vso-probe-patch.json
+  changed_when: true
+
+- name: Remove VSO probe patch file
+  file:
+    path: /tmp/vso-probe-patch.json
+    state: absent
+
+- name: Wait for VSO controller rollout
+  command: >
+    kubectl -n {{ helm_charts.vault_secrets_operator.namespace }}
+    rollout status deployment/vault-secrets-operator-controller-manager
+    --timeout=300s
+  changed_when: false

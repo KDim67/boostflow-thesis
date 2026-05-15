@@ -8,7 +8,7 @@ export function validateOrigin(request: NextRequest): boolean {
 
   // Determine allowed origins dynamically based on env or hardcode for strictness
   const allowedOrigins = new Set([
-    "https://boostflow.me",
+    "https://boostflow-thesis.me",
     "http://localhost:3000",
   ]);
 

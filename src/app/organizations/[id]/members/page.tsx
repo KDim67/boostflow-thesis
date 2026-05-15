@@ -497,12 +497,22 @@ export default function OrganizationMembers() {
   /**
    * Formats the joined date handling different Date object formats from Firestore
    */
-  const formatJoinedDate = (joinedAt: any) => {
+  const formatJoinedDate = (joinedAt: unknown) => {
     if (!joinedAt) return "N/A";
-    if (joinedAt.seconds !== undefined) {
-      return new Date(joinedAt.seconds * 1000).toLocaleDateString();
+    if (
+      typeof joinedAt === "object" &&
+      joinedAt !== null &&
+      "seconds" in joinedAt &&
+      typeof (joinedAt as { seconds: unknown }).seconds === "number"
+    ) {
+      return new Date(
+        (joinedAt as { seconds: number }).seconds * 1000
+      ).toLocaleDateString();
     }
-    if (typeof joinedAt.getTime === "function") {
+    if (joinedAt instanceof Date) {
+      return joinedAt.toLocaleDateString();
+    }
+    if (typeof joinedAt === "string" || typeof joinedAt === "number") {
       return new Date(joinedAt).toLocaleDateString();
     }
     return new Date(Date.now()).toLocaleDateString();

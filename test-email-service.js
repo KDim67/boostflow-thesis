@@ -39,7 +39,7 @@ class TestSendGridProvider {
         from:
           options.from ||
           process.env.DEFAULT_FROM_EMAIL ||
-          "noreply@boostflow.me",
+          "noreply@boostflow-thesis.me",
         cc: options.cc,
         bcc: options.bcc,
         subject: options.subject,
@@ -137,7 +137,7 @@ async function testEmailService() {
     to: "it2022053@hua.gr",
     inviterName: "Test Admin",
     organizationName: "Test Organization",
-    inviteUrl: "https://boostflow.me/invite/test123",
+    inviteUrl: "https://boostflow-thesis.me/invite/test123",
   });
 
   console.log("Result:", inviteResult);

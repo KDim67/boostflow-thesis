@@ -186,6 +186,20 @@ deny contains msg if {
 }
 
 deny contains msg if {
+	input.kind == "Deployment"
+	some container in input.spec.template.spec.containers
+	not contains(container.image, "@sha256:")
+	msg := sprintf("Container '%s' in Deployment '%s' must pin image by SHA256 digest (image@sha256:...)", [container.name, input.metadata.name])
+}
+
+deny contains msg if {
+	input.kind == "StatefulSet"
+	some container in input.spec.template.spec.containers
+	not contains(container.image, "@sha256:")
+	msg := sprintf("Container '%s' in StatefulSet '%s' must pin image by SHA256 digest (image@sha256:...)", [container.name, input.metadata.name])
+}
+
+deny contains msg if {
 	input.kind in {"Deployment", "StatefulSet"}
 	not input.spec.template.spec.automountServiceAccountToken == false
 	msg := sprintf("%s '%s' should set automountServiceAccountToken to false", [input.kind, input.metadata.name])

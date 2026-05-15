@@ -1,0 +1,13 @@
+---
+- name: Ensure real_user is defined inside vault role
+  when: real_user is not defined
+  block:
+    - name: Get actual non-root username
+      command: whoami
+      become: false
+      register: _vault_real_user
+      changed_when: false
+
+    - name: Set real_user fact
+      set_fact:
+        real_user: "{{ _vault_real_user }}"

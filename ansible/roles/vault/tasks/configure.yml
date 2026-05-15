@@ -1,0 +1,222 @@
+---
+- name: Wait for Vault to start up and respond
+  command: kubectl exec -n {{ vault_namespace }} vault-0 -- vault status -format=json
+  register: vault_status_raw
+  failed_when: false
+  changed_when: false
+  retries: 30
+  delay: 5
+  until: vault_status_raw.stdout | length > 0 and '"initialized"' in vault_status_raw.stdout
+
+- name: Parse Vault status
+  set_fact:
+    vault_status: "{{ vault_status_raw.stdout | from_json }}"
+
+- name: Initialize Vault (one-shot)
+  command: >
+    kubectl exec -n {{ vault_namespace }} vault-0 --
+    vault operator init -key-shares=1 -key-threshold=1 -format=json
+  register: vault_init_raw
+  when: vault_status is defined and not vault_status.initialized
+
+- name: Persist init output to controller
+  copy:
+    dest: "{{ vault_init_file }}"
+    content: "{{ vault_init_raw.stdout }}"
+    owner: "{{ real_user.stdout }}"
+    mode: "0600"
+  when: vault_init_raw is defined and vault_init_raw.stdout is defined
+  no_log: true
+
+- name: Read persisted init file
+  slurp:
+    src: "{{ vault_init_file }}"
+  register: vault_init_slurp
+
+- name: Parse init data
+  set_fact:
+    vault_init: "{{ vault_init_slurp.content | b64decode | from_json }}"
+  no_log: true
+
+- name: Re-check Vault status (sealed?)
+  command: kubectl exec -n {{ vault_namespace }} vault-0 -- vault status -format=json
+  register: vault_status_recheck
+  failed_when: false
+  changed_when: false
+
+- name: Parse re-check status
+  set_fact:
+    vault_status: "{{ vault_status_recheck.stdout | from_json }}"
+
+- name: Unseal Vault
+  command: >
+    kubectl exec -n {{ vault_namespace }} vault-0 --
+    vault operator unseal {{ vault_init.unseal_keys_b64[0] }}
+  when: vault_status.sealed | bool
+  no_log: true
+
+- name: Wait for Vault to be ready
+  command: kubectl exec -n {{ vault_namespace }} vault-0 -- vault status -format=json
+  register: vault_ready
+  retries: 12
+  delay: 5
+  until: (vault_ready.stdout | from_json).sealed == false
+  changed_when: false
+
+- name: Set Vault root token fact
+  set_fact:
+    vault_root_token: "{{ vault_init.root_token }}"
+  no_log: true
+
+- name: Helper - vault exec wrapper
+  set_fact:
+    _vault_exec: 'kubectl exec -n {{ vault_namespace }} vault-0 -- sh -c ''VAULT_TOKEN={{ vault_root_token }} VAULT_ADDR=http://127.0.0.1:8200 vault "$@"'' --'
+  no_log: true
+
+- name: Enable kv-v2 secrets engine
+  shell: "{{ _vault_exec }} secrets enable -path={{ vault_kv_mount }} kv-v2"
+  register: kv_enable
+  failed_when: kv_enable.rc != 0 and 'already in use' not in kv_enable.stderr
+  changed_when: "'Success' in kv_enable.stdout"
+
+- name: Enable Kubernetes auth
+  shell: "{{ _vault_exec }} auth enable kubernetes"
+  register: k8s_enable
+  failed_when: >
+    k8s_enable.rc != 0 and
+    'already enabled' not in k8s_enable.stderr and
+    'path is already in use' not in k8s_enable.stderr
+  changed_when: "'Success' in k8s_enable.stdout"
+
+- name: Configure Kubernetes auth (uses Vault's own pod SA)
+  shell: |
+    TOKEN_REVIEWER_JWT=$(kubectl exec -n {{ vault_namespace }} vault-0 -- sh -c 'cat /var/run/secrets/kubernetes.io/serviceaccount/token')
+    KUBERNETES_CA_CERT=$(kubectl exec -n {{ vault_namespace }} vault-0 -- sh -c 'cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt')
+    {{ _vault_exec }} write auth/kubernetes/config \
+      token_reviewer_jwt="$TOKEN_REVIEWER_JWT" \
+      kubernetes_host="https://kubernetes.default.svc:443" \
+      kubernetes_ca_cert="$KUBERNETES_CA_CERT"
+  register: k8s_config
+  changed_when: "'Success' in k8s_config.stdout"
+  no_log: true
+
+- name: Apply policies directly to vault pod
+  shell: |
+    cat <<'EOF' | kubectl exec -i -n {{ vault_namespace }} vault-0 -- sh -c 'VAULT_TOKEN={{ vault_root_token }} VAULT_ADDR=http://127.0.0.1:8200 vault policy write {{ item.name }} -'
+    {{ item.body }}
+    EOF
+  loop:
+    - name: jenkins-ci
+      body: |
+        path "{{ vault_kv_mount }}/data/boostflow/ci/*"      { capabilities = ["read"] }
+        path "{{ vault_kv_mount }}/metadata/boostflow/ci/*"  { capabilities = ["read", "list"] }
+        path "{{ vault_kv_mount }}/data/boostflow/build/*"   { capabilities = ["read"] }
+        path "{{ vault_kv_mount }}/data/boostflow/runtime/*" { capabilities = ["read"] }
+    - name: boostflow-app
+      body: |
+        path "{{ vault_kv_mount }}/data/boostflow/runtime/*" { capabilities = ["read"] }
+        path "{{ vault_kv_mount }}/metadata/boostflow/runtime/*" { capabilities = ["read", "list"] }
+    - name: admin
+      body: |
+        path "*" { capabilities = ["create","read","update","delete","list","sudo"] }
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+
+- name: Check for existing Jenkins periodic token file
+  stat:
+    path: "{{ vault_jenkins_token_file }}"
+  register: jenkins_token_stat
+
+- name: Create Jenkins periodic Vault token
+  shell: "{{ _vault_exec }} token create -policy=jenkins-ci -period={{ vault_jenkins_token_period }} -orphan -display-name=jenkins-ci -field=token"
+  register: jenkins_token_create
+  changed_when: true
+  no_log: true
+  when: not jenkins_token_stat.stat.exists or (vault_rotate_jenkins_token | default(false) | bool)
+
+- name: Persist Jenkins token to controller
+  copy:
+    dest: "{{ vault_jenkins_token_file }}"
+    content: "{{ jenkins_token_create.stdout }}"
+    owner: "{{ real_user.stdout }}"
+    mode: "0600"
+  when: jenkins_token_create.stdout is defined and jenkins_token_create.stdout | length > 0
+  no_log: true
+
+- name: Read persisted Jenkins token
+  slurp:
+    src: "{{ vault_jenkins_token_file }}"
+  register: jenkins_token_slurp
+  no_log: true
+
+- name: Set Jenkins token fact
+  set_fact:
+    jenkins_vault_token: "{{ jenkins_token_slurp.content | b64decode | trim }}"
+  no_log: true
+
+- name: Install Jenkins Vault token renewal script
+  copy:
+    dest: /usr/local/bin/vault-jenkins-token-renew.sh
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      TOKEN_FILE="{{ vault_jenkins_token_file }}"
+      [ -r "$TOKEN_FILE" ] || { echo "missing $TOKEN_FILE"; exit 1; }
+      TOKEN=$(cat "$TOKEN_FILE")
+      kubectl exec -n {{ vault_namespace }} vault-0 -- sh -c \
+        "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$TOKEN vault token renew -self >/dev/null"
+  become: true
+
+- name: Schedule daily Jenkins Vault token renewal
+  cron:
+    name: vault-jenkins-token-renew
+    user: "{{ real_user.stdout }}"
+    minute: "17"
+    hour: "3"
+    job: "/usr/local/bin/vault-jenkins-token-renew.sh >> /var/log/vault-jenkins-token-renew.log 2>&1"
+  become: true
+
+- name: Create Kubernetes auth role for boostflow app
+  shell: |
+    {{ _vault_exec }} write auth/kubernetes/role/{{ vault_k8s_app_role_name }} \
+      bound_service_account_names=boostflow-vault \
+      bound_service_account_namespaces={{ app_namespace }} \
+      bound_audiences=vault \
+      token_policies=boostflow-app \
+      token_ttl=1h
+  changed_when: false
+
+- name: Create Kubernetes auth role for backup namespace
+  shell: |
+    {{ _vault_exec }} write auth/kubernetes/role/{{ vault_k8s_app_role_name }}-backup \
+      bound_service_account_names=boostflow-vault \
+      bound_service_account_namespaces={{ backup_namespace }} \
+      bound_audiences=vault \
+      token_policies=boostflow-app \
+      token_ttl=1h
+  changed_when: false
+
+- name: Create Kubernetes auth role for monitoring namespace
+  shell: |
+    {{ _vault_exec }} write auth/kubernetes/role/monitoring-grafana \
+      bound_service_account_names=monitoring-vault \
+      bound_service_account_namespaces={{ monitoring_namespace }} \
+      bound_audiences=vault \
+      token_policies=admin \
+      token_ttl=1h
+  changed_when: false
+
+- name: Show Jenkins Vault token info
+  debug:
+    msg:
+      - "--- HashiCorp Vault ---"
+      - "Vault address (in-cluster): {{ vault_addr_internal }}"
+      - "UI: kubectl port-forward -n {{ vault_namespace }} svc/vault 8200:8200"
+      - "Jenkins periodic token file: {{ vault_jenkins_token_file }} (period={{ vault_jenkins_token_period }})"
+      - "Configure Jenkins global Vault as 'Vault Token Credential' with the value of that file."
+      - "Renewal cron installed at /usr/local/bin/vault-jenkins-token-renew.sh (daily 03:17)."
+      - "To force-rotate: re-run playbook with -e vault_rotate_jenkins_token=true"

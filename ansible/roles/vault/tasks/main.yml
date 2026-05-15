@@ -1,0 +1,6 @@
+---
+- import_tasks: precheck.yml
+- import_tasks: install.yml
+- import_tasks: configure.yml
+- import_tasks: seed.yml
+  when: vault_seed | bool

@@ -262,8 +262,8 @@ export default function UserManagementPage() {
       const updateData: {
         suspended: boolean;
         updatedAt: Date;
-        suspensionReason?: string | null;
-        suspendedAt?: Date | null;
+        suspensionReason?: string;
+        suspendedAt?: Date;
       } = {
         suspended: !currentUser.suspended,
         updatedAt: new Date(),
@@ -272,8 +272,8 @@ export default function UserManagementPage() {
       // Add suspension metadata when suspending
       if (currentUser.suspended) {
         // Clear suspension metadata when unsuspending
-        updateData.suspensionReason = null;
-        updateData.suspendedAt = null;
+        updateData.suspensionReason = undefined;
+        updateData.suspendedAt = undefined;
       } else {
         updateData.suspensionReason = suspensionReason || "No reason provided";
         updateData.suspendedAt = new Date();
@@ -883,13 +883,21 @@ export default function UserManagementPage() {
   );
 }
 
+interface UserRowProps {
+  user: UserWithOrganizations;
+  formatLastActive: (timestamp: unknown) => string;
+  handleEditUser: (user: UserWithOrganizations) => void;
+  handleSuspendUser: (user: UserWithOrganizations) => void;
+  handleDeleteUser: (user: UserWithOrganizations) => void;
+}
+
 const UserRow = ({
   user,
   formatLastActive,
   handleEditUser,
   handleSuspendUser,
   handleDeleteUser,
-}: any) => {
+}: UserRowProps) => {
   const getStatusValue = () => {
     if (user.suspended) return "suspended";
     if (user.updatedAt) return "active";

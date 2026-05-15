@@ -485,7 +485,7 @@ export default function SettingsPage() {
 
       // Use verifyBeforeUpdateEmail to send verification email first
       const actionCodeSettings = {
-        url: `${process.env.NEXT_PUBLIC_APP_URL || "https://boostflow.me"}/auth-handler/auth/action`,
+        url: `${process.env.NEXT_PUBLIC_APP_URL || "https://boostflow-thesis.me"}/auth-handler/auth/action`,
         handleCodeInApp: true, // Handle verification in the app
       };
 

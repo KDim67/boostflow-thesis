@@ -627,6 +627,8 @@ function TaskModal({
         onTaskCreated({
           id: newTaskId,
           ...taskData,
+          organizationId: organizationId ?? "",
+          projectId: projectId ?? "",
           createdAt: new Date(), // Use local timestamp for immediate UI update
         });
       }

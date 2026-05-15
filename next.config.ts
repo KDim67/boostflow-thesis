@@ -57,6 +57,13 @@ const nextConfig: NextConfig = {
         minio: false,
       };
     }
+
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@protobufjs/inquire":
+        require.resolve("./src/lib/stubs/protobufjs-inquire.js"),
+    };
+
     return config;
   },
   serverExternalPackages: [
@@ -77,6 +84,7 @@ const nextConfig: NextConfig = {
       "@sendgrid/helpers": {
         browser: "./src/lib/stubs/nodemailer.stub",
       },
+      "@protobufjs/inquire": "./src/lib/stubs/protobufjs-inquire.js",
     },
   },
   output: "standalone",
