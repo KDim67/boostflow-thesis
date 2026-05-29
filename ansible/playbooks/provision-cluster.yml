@@ -569,8 +569,8 @@
 
     - name: Build custom Jenkins Docker image
       shell: |
-        if [ -f /home/{{ real_user.stdout }}/boostflow-thesis-config/Dockerfile.jenkins ]; then
-          docker build -t custom-jenkins -f /home/{{ real_user.stdout }}/boostflow-thesis-config/Dockerfile.jenkins /home/{{ real_user.stdout }}/boostflow-thesis-config
+        if [ -f /home/{{ real_user.stdout }}/boostflow-thesis/Dockerfile.jenkins ]; then
+          docker build -t custom-jenkins -f /home/{{ real_user.stdout }}/boostflow-thesis/Dockerfile.jenkins /home/{{ real_user.stdout }}/boostflow-thesis
         fi
       changed_when: true
 
