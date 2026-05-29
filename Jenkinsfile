@@ -436,6 +436,9 @@ DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
 SENDGRID_API_KEY=${SENDGRID_API_KEY}
 NODE_ENV=${NODE_ENV}
 EOF
+                            # Clear BuildKit cache to prevent database corruption
+                            docker builder prune -f || true
+
                             docker build \
                                 --memory=3g \
                                 --memory-swap=3g \
