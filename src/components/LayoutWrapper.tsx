@@ -52,7 +52,7 @@ export default function LayoutWrapper({
   if (isAdminPanel) {
     mainClassName = "";
   } else if (!isFullBleedPage) {
-    mainClassName = "flex-grow pt-28";
+    mainClassName = "flex-grow pt-28 bg-gray-50 dark:bg-gray-900";
   }
 
   return (

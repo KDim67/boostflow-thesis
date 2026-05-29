@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     // Initialize Google Generative AI with the latest model
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     // Prepare project context for AI analysis (limit to 10 recent tasks for efficiency)
     const projectContext = {
