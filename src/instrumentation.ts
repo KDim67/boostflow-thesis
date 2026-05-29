@@ -7,7 +7,7 @@ export async function register() {
 
     // Handle any ES/CJS module interoperability wrappers cleanly
     const Resource =
-      (resources as any).Resource || (resources as any).default?.Resource;
+      (resources as any).Resource ?? (resources as any).default?.Resource;
 
     const sdk = new NodeSDK({
       resource: new Resource({
@@ -15,7 +15,7 @@ export async function register() {
       }),
       traceExporter: new OTLPTraceExporter({
         url:
-          process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
+          process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??
           "http://jaeger.monitoring.svc.cluster.local:4317",
       }),
     });
