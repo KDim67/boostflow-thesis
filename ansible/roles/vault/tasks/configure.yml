@@ -168,7 +168,7 @@
       [ -r "$TOKEN_FILE" ] || { echo "missing $TOKEN_FILE"; exit 1; }
       TOKEN=$(cat "$TOKEN_FILE")
       kubectl exec -n {{ vault_namespace }} vault-0 -- sh -c \
-        "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$TOKEN vault token renew -self >/dev/null"
+        "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$TOKEN vault token renew >/dev/null"
   become: true
 
 - name: Schedule daily Jenkins Vault token renewal
