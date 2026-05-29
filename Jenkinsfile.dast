@@ -131,11 +131,11 @@ pipeline {
                             docker rm -f zap-scanner || true
 
                              # Start ZAP in a detached placeholder container with an anonymous volume to satisfy ZAP's mount check
-                             # We increase container memory limit to 2g and cap the JVM max heap (-Xmx1536m) via ZAP_JVM_ARGS
+                             # We increase container memory limit to 4g and cap the JVM max heap (-Xmx3072m) via ZAP_JVM_ARGS
                              # to prevent the JVM from dynamically allocating 25% of host memory (10.5g) and crashing from OOM
                              docker run -d --name zap-scanner \
-                                 --memory=2g --memory-swap=2g \
-                                 -e ZAP_JVM_ARGS="-Xmx1536m" \
+                                 --memory=4g --memory-swap=4g \
+                                 -e ZAP_JVM_ARGS="-Xmx3072m" \
                                  --network host \
                                  -v /zap/wrk \
                                  --entrypoint "" \
@@ -144,6 +144,13 @@ pipeline {
 
                              # Securely change ownership of the mounted anonymous volume to the unprivileged 'zap' user (UID 1000)
                              docker exec -u root zap-scanner chown -R zap:zap /zap/wrk
+
+                             # Ensure the unprivileged zap user's home directory has the proper JVM properties file to override ZAP's dynamic memory calculation.
+                             # ZAP's startup script calculates 25% of host memory (10.5g on this 42g agent) and overrides ZAP_JVM_ARGS,
+                             # leading to a container OOM crash because the container is limited to 4g. Setting the JVM property file avoids this.
+                             docker exec -u root zap-scanner mkdir -p /home/zap/.ZAP
+                             docker exec -u root zap-scanner sh -c "echo '-Xmx3072m' > /home/zap/.ZAP/.ZAP_JVM.properties"
+                             docker exec -u root zap-scanner chown -R zap:zap /home/zap
 
                              # Copy the local configuration file directly into the mounted working directory and fix its ownership
                              docker cp zap.conf zap-scanner:/zap/wrk/zap.conf
@@ -155,9 +162,10 @@ pipeline {
                              # support "*" as a wildcard for bypassing all proxies) to ensure direct loopback communication.
                              exit_code=0
                              docker exec -u zap \
-                                 -e ZAP_JVM_ARGS="-Xmx1536m" \
+                                 -e ZAP_JVM_ARGS="-Xmx3072m" \
                                  -e http_proxy="" -e https_proxy="" \
                                  -e HTTP_PROXY="" -e HTTPS_PROXY="" \
+                                 -e all_proxy="" -e ALL_PROXY="" \
                                  -e no_proxy="localhost,127.0.0.1" -e NO_PROXY="localhost,127.0.0.1" \
                                  zap-scanner zap-baseline.py \
                                  -t \${TARGET} \

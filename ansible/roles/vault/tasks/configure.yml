@@ -76,12 +76,21 @@
 - name: Enable kv-v2 secrets engine
   shell: "{{ _vault_exec }} secrets enable -path={{ vault_kv_mount }} kv-v2"
   register: kv_enable
-  failed_when: kv_enable.rc != 0 and 'already in use' not in kv_enable.stderr
+  retries: 6
+  delay: 5
+  until: kv_enable.rc == 0 or 'already in use' in kv_enable.stderr or 'already enabled' in kv_enable.stderr
+  failed_when: kv_enable.rc != 0 and 'already in use' not in kv_enable.stderr and 'already enabled' not in kv_enable.stderr
   changed_when: "'Success' in kv_enable.stdout"
 
 - name: Enable Kubernetes auth
   shell: "{{ _vault_exec }} auth enable kubernetes"
   register: k8s_enable
+  retries: 6
+  delay: 5
+  until: >
+    k8s_enable.rc == 0 or
+    'already enabled' in k8s_enable.stderr or
+    'path is already in use' in k8s_enable.stderr
   failed_when: >
     k8s_enable.rc != 0 and
     'already enabled' not in k8s_enable.stderr and
