@@ -5,12 +5,13 @@ export async function register() {
       await import("@opentelemetry/exporter-trace-otlp-grpc");
     const resources = await import("@opentelemetry/resources");
 
-    // Handle any ES/CJS module interoperability wrappers cleanly
-    const Resource =
-      (resources as any).Resource ?? (resources as any).default?.Resource;
+    // Resolve the factory function cleanly across any ESM/CJS wrappers
+    const resourceFromAttributes =
+      (resources as any).resourceFromAttributes ??
+      (resources as any).default?.resourceFromAttributes;
 
     const sdk = new NodeSDK({
-      resource: new Resource({
+      resource: resourceFromAttributes({
         "service.name": "boostflow-app",
       }),
       traceExporter: new OTLPTraceExporter({
