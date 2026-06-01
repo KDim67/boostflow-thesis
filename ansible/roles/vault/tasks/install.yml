@@ -109,11 +109,11 @@
     --set defaultVaultConnection.enabled=true
     --set defaultVaultConnection.address={{ vault_addr_internal }}
     --set defaultVaultConnection.skipTLSVerify=true
-    --set controller.manager.resources.requests.cpu=50m
+    --set controller.manager.resources.requests.cpu=5m
     --set controller.manager.resources.requests.memory=128Mi
     --set controller.manager.resources.limits.cpu=500m
     --set controller.manager.resources.limits.memory=512Mi
-    --set controller.kubeRbacProxy.resources.requests.cpu=5m
+    --set controller.kubeRbacProxy.resources.requests.cpu=2m
     --set controller.kubeRbacProxy.resources.requests.memory=64Mi
     --set controller.kubeRbacProxy.resources.limits.cpu=500m
     --set controller.kubeRbacProxy.resources.limits.memory=128Mi

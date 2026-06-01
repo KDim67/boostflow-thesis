@@ -4,9 +4,53 @@
   become: true
   vars_files:
     - ../group_vars/all.yml
-    - ../secrets.vault.yml
 
   tasks:
+    - name: Load local secrets if present on control node
+      include_vars:
+        file: ../secrets.vault.yml
+      failed_when: false
+      tags: always
+
+    - name: Check if secrets.vault.yml exists on target VM
+      stat:
+        path: /home/azureuser/boostflow-thesis/ansible/secrets.vault.yml
+      register: vm_secrets_stat
+      when: cosign_public_key is not defined
+      tags: always
+
+    - name: Fetch secrets.vault.yml from target VM
+      fetch:
+        src: /home/azureuser/boostflow-thesis/ansible/secrets.vault.yml
+        dest: /tmp/secrets.vault.yml
+        flat: yes
+      when:
+        - cosign_public_key is not defined
+        - vm_secrets_stat.stat.exists | default(false)
+      no_log: true
+      tags: always
+
+    - name: Load fetched secrets file on control node
+      include_vars:
+        file: /tmp/secrets.vault.yml
+      when:
+        - cosign_public_key is not defined
+        - vm_secrets_stat.stat.exists | default(false)
+      tags: always
+
+    - name: Clean up temporary secrets file on control node
+      file:
+        path: /tmp/secrets.vault.yml
+        state: absent
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_become: false
+      when:
+        - cosign_public_key is not defined
+        - vm_secrets_stat.stat.exists | default(false)
+      tags: always
+
     - name: Get actual non-root username
       command: whoami
       become: false
@@ -25,12 +69,11 @@
         state: absent
 
     - name: Load required kernel modules
-      modprobe:
-        name: "{{ item }}"
-        state: present
+      command: modprobe {{ item }}
       loop:
         - overlay
         - br_netfilter
+      changed_when: false
 
     - name: Persist kernel modules across reboots
       copy:
@@ -312,6 +355,10 @@
       register: awx_instance_check
       ignore_errors: true
 
+    - name: Ensure stale AWX migration jobs are removed
+      command: kubectl delete jobs -n {{ awx_namespace }} -l app.kubernetes.io/component=migration
+      failed_when: false
+
     - name: Create AWX instance
       shell: |
         cat <<EOF | kubectl apply -f -
@@ -344,12 +391,26 @@
             limits:
               cpu: 1000m
               memory: 2Gi
+          ee_resource_requirements:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          rsyslog_resource_requirements:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
         EOF
       when: awx_instance_check.rc != 0
 
     - name: Deploy and configure HashiCorp Vault
       import_role:
-        name: vault
+        name: ../roles/vault
         defaults_from: main
       tags: vault
 
@@ -380,20 +441,20 @@
           command: >
             kubectl create secret generic boostflow-app-secret
             --namespace {{ app_namespace }}
-            --from-literal=FIREBASE_SERVICE_ACCOUNT_KEY={{ firebase_service_account_key }}
-            --from-literal=GEMINI_API_KEY={{ gemini_api_key }}
-            --from-literal=GOOGLE_CLIENT_ID={{ google_client_id }}
-            --from-literal=GOOGLE_CLIENT_SECRET={{ google_client_secret }}
-            --from-literal=GITHUB_CLIENT_ID={{ github_client_id }}
-            --from-literal=GITHUB_CLIENT_SECRET={{ github_client_secret }}
-            --from-literal=MINIO_ENDPOINT=minio.{{ app_namespace }}.svc.cluster.local:9000
-            --from-literal=MINIO_EXTERNAL_ENDPOINT={{ minio_external_endpoint }}
-            --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
-            --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
-            --from-literal=MINIO_USE_SSL=false
-            --from-literal=SENDGRID_API_KEY={{ sendgrid_api_key }}
-            --from-literal=DEFAULT_FROM_EMAIL={{ default_from_email }}
-            --from-literal=NODE_ENV=production
+            --from-literal=FIREBASE_SERVICE_ACCOUNT_KEY='{{ firebase_service_account_key }}'
+            --from-literal=GEMINI_API_KEY='{{ gemini_api_key }}'
+            --from-literal=GOOGLE_CLIENT_ID='{{ google_client_id }}'
+            --from-literal=GOOGLE_CLIENT_SECRET='{{ google_client_secret }}'
+            --from-literal=GITHUB_CLIENT_ID='{{ github_client_id }}'
+            --from-literal=GITHUB_CLIENT_SECRET='{{ github_client_secret }}'
+            --from-literal=MINIO_ENDPOINT='minio.{{ app_namespace }}.svc.cluster.local:9000'
+            --from-literal=MINIO_EXTERNAL_ENDPOINT='{{ minio_external_endpoint }}'
+            --from-literal=MINIO_ROOT_USER='{{ minio_root_user }}'
+            --from-literal=MINIO_ROOT_PASSWORD='{{ minio_root_password }}'
+            --from-literal=MINIO_USE_SSL='false'
+            --from-literal=SENDGRID_API_KEY='{{ sendgrid_api_key }}'
+            --from-literal=DEFAULT_FROM_EMAIL='{{ default_from_email }}'
+            --from-literal=NODE_ENV='production'
           when: app_secret_check.rc != 0
           no_log: true
 
@@ -406,8 +467,8 @@
           command: >
             kubectl create secret generic minio-secret
             --namespace {{ app_namespace }}
-            --from-literal=MINIO_ROOT_USER={{ minio_root_user }}
-            --from-literal=MINIO_ROOT_PASSWORD={{ minio_root_password }}
+            --from-literal=MINIO_ROOT_USER='{{ minio_root_user }}'
+            --from-literal=MINIO_ROOT_PASSWORD='{{ minio_root_password }}'
           when: minio_secret_check.rc != 0
 
         - name: Check if MinIO backup secret exists

@@ -59,3 +59,4 @@ cosign_image_pattern: "ghcr.io/kdim67/boostflow*"
 
 git_repo_url: https://github.com/KDim67/boostflow-thesis.git
 git_repo_branch: main
+use_vault_for_secrets: true
