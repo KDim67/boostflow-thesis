@@ -5,9 +5,9 @@ import {
   generateFileName,
   initializeBuckets,
 } from "@/lib/minio/client";
-import { updateUserProfile } from "@/lib/firebase/userProfileService";
 import { requireBearerToken } from "@/lib/api/authHelper";
 import { validateImageFile, fileToBuffer } from "@/lib/api/uploadHelper";
+import { adminFirestore } from "@/lib/firebase/adminConfig";
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,11 +44,14 @@ export async function POST(request: NextRequest) {
     // Add cache-busting parameter to prevent browser caching issues
     const cacheBustedUrl = `${fileUrl}?t=${Date.now()}`;
 
-    // Update user profile with new picture URL
-    await updateUserProfile(userId, {
-      profilePicture: cacheBustedUrl,
-      updatedAt: new Date(),
-    });
+    // Update user profile with new picture URL via Admin SDK (avoids gRPC stream drops)
+    await adminFirestore.collection("users").doc(userId).set(
+      {
+        profilePicture: cacheBustedUrl,
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
 
     return NextResponse.json({
       success: true,

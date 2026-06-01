@@ -5,12 +5,54 @@ import {
   generateFileName,
   initializeBuckets,
 } from "@/lib/minio/client";
-import {
-  updateOrganization,
-  hasOrganizationPermission,
-} from "@/lib/firebase/organizationService";
 import { requireBearerToken } from "@/lib/api/authHelper";
 import { validateImageFile, fileToBuffer } from "@/lib/api/uploadHelper";
+import { adminFirestore } from "@/lib/firebase/adminConfig";
+
+// Role hierarchy for permission checks
+const ROLE_LEVELS: Record<string, number> = {
+  owner: 4,
+  admin: 3,
+  member: 2,
+  viewer: 1,
+};
+
+/**
+ * Checks organization permission using the Admin SDK (server-side Firestore).
+ * Includes a retry-with-backoff to handle the race condition where a newly
+ * created organization's membership document hasn't yet propagated from the
+ * client-side long-polling write to the server-readable state.
+ */
+async function checkPermissionWithRetry(
+  userId: string,
+  organizationId: string,
+  requiredRole: string,
+  maxRetries = 4,
+  initialDelayMs = 300
+): Promise<boolean> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const snap = await adminFirestore
+      .collection("organizationMemberships")
+      .where("userId", "==", userId)
+      .where("organizationId", "==", organizationId)
+      .where("status", "==", "active")
+      .limit(1)
+      .get();
+
+    if (!snap.empty) {
+      const role = snap.docs[0].data().role as string;
+      return (ROLE_LEVELS[role] ?? 0) >= (ROLE_LEVELS[requiredRole] ?? 0);
+    }
+
+    // Membership not found yet — if we have retries left, wait and try again
+    if (attempt < maxRetries) {
+      const delay = initialDelayMs * Math.pow(2, attempt); // 300, 600, 1200, 2400 ms
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  return false;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,12 +78,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user has permission to update the organization
-    const hasPermission = await hasOrganizationPermission(
+    // Check permission via Admin SDK with retry backoff for new org race condition
+    const hasPermission = await checkPermissionWithRetry(
       userId,
       organizationId,
       "admin"
     );
+
     if (!hasPermission) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
@@ -72,11 +115,14 @@ export async function POST(request: NextRequest) {
     // Add cache-busting parameter to prevent browser caching issues
     const cacheBustedUrl = `${fileUrl}?t=${Date.now()}`;
 
-    // Update organization with new logo URL
-    await updateOrganization(organizationId, {
-      logoUrl: cacheBustedUrl,
-      updatedAt: new Date(),
-    });
+    // Update organization with new logo URL via Admin SDK
+    await adminFirestore
+      .collection("organizations")
+      .doc(organizationId)
+      .update({
+        logoUrl: cacheBustedUrl,
+        updatedAt: new Date(),
+      });
 
     return NextResponse.json({
       success: true,

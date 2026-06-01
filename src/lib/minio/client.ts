@@ -1,5 +1,8 @@
 import { Client } from "minio";
 
+// Buckets only need to be initialized once per Node.js process
+let bucketsInitialized = false;
+
 const minioClient = new Client({
   endPoint: process.env.MINIO_ENDPOINT?.split(":")[0] || "localhost",
   port: Number.parseInt(process.env.MINIO_ENDPOINT?.split(":")[1] || "9000"),
@@ -15,8 +18,11 @@ export const BUCKETS = {
   PROJECT_DOCUMENTS: "project-documents",
 } as const;
 
-// Initialize buckets
+// Initialize buckets – runs only once per process lifetime
 export async function initializeBuckets() {
+  // Skip if already initialized in this process instance
+  if (bucketsInitialized) return;
+
   try {
     for (const bucketName of Object.values(BUCKETS)) {
       const exists = await minioClient.bucketExists(bucketName);
@@ -25,7 +31,7 @@ export async function initializeBuckets() {
         console.log(`Created bucket: ${bucketName}`);
       }
 
-      // Set public read policy for profile-pictures and organization-logos buckets (for both new and existing buckets)
+      // Set public read policy for profile-pictures and organization-logos buckets
       if (
         bucketName === BUCKETS.PROFILE_PICTURES ||
         bucketName === BUCKETS.ORGANIZATION_LOGOS
@@ -45,6 +51,8 @@ export async function initializeBuckets() {
         console.log(`Set public read policy for bucket: ${bucketName}`);
       }
     }
+    // Mark as initialized so subsequent requests skip this block
+    bucketsInitialized = true;
   } catch (error) {
     console.error("Error initializing MinIO buckets:", error);
   }

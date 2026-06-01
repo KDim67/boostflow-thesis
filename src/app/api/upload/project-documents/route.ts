@@ -5,9 +5,34 @@ import {
   generateFileName,
   initializeBuckets,
 } from "@/lib/minio/client";
-import { addDocument } from "@/lib/firebase/firestoreService";
-import { hasOrganizationPermission } from "@/lib/firebase/organizationService";
 import { requireBearerToken } from "@/lib/api/authHelper";
+import { adminFirestore } from "@/lib/firebase/adminConfig";
+
+// Role hierarchy
+const ROLE_LEVELS: Record<string, number> = {
+  owner: 4,
+  admin: 3,
+  member: 2,
+  viewer: 1,
+};
+
+async function hasPermissionAdmin(
+  userId: string,
+  organizationId: string,
+  requiredRole: string
+): Promise<boolean> {
+  const snap = await adminFirestore
+    .collection("organizationMemberships")
+    .where("userId", "==", userId)
+    .where("organizationId", "==", organizationId)
+    .where("status", "==", "active")
+    .limit(1)
+    .get();
+
+  if (snap.empty) return false;
+  const role = snap.docs[0].data().role as string;
+  return (ROLE_LEVELS[role] ?? 0) >= (ROLE_LEVELS[requiredRole] ?? 0);
+}
 
 export const config = {
   api: {
@@ -43,8 +68,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user has permission to upload files to this organization
-    const hasPermission = await hasOrganizationPermission(
+    // Check if user has permission to upload files to this organization (Admin SDK)
+    const hasPermission = await hasPermissionAdmin(
       userId,
       organizationId,
       "member"
@@ -154,7 +179,13 @@ export async function POST(request: NextRequest) {
       contentType: file.type,
     };
 
-    const documentId = await addDocument("project-documents", documentData);
+    // Save document metadata to Firestore via Admin SDK
+    const docRef = await adminFirestore.collection("project-documents").add({
+      ...documentData,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const documentId = docRef.id;
 
     return NextResponse.json({
       success: true,
