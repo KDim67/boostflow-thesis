@@ -106,15 +106,15 @@ export async function uploadFile(
       process.env.MINIO_ENDPOINT ||
       "localhost:9000";
 
-    // If external endpoint already includes protocol, use it as is
+    // If external endpoint already includes protocol, add /minio/ prefix for nginx routing
     if (
       externalEndpoint.startsWith("http://") ||
       externalEndpoint.startsWith("https://")
     ) {
-      return `${externalEndpoint}/${bucketName}/${fileName}`;
+      return `${externalEndpoint}/minio/${bucketName}/${fileName}`;
     }
 
-    // Otherwise, add http protocol for backward compatibility
+    // Local dev: no /minio prefix needed (direct S3 port)
     return `http://${externalEndpoint}/${bucketName}/${fileName}`;
   } catch (error) {
     console.error("Error uploading file to MinIO:", error);
