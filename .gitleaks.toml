@@ -66,6 +66,7 @@ paths = [
   '''\.env\.example$''',
   '''\.env\.template$''',
   '''README\.md$''',
+  '''WEBAPP\.md$''',
   '''\.gitleaks\.toml$''',
 ]
 

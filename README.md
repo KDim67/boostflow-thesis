@@ -1,276 +1,224 @@
-# BoostFlow
+# BoostFlow - DevSecOps Pipeline
 
 <div align="center">
   <img src="public/harokopioXboostflow.png" alt="BoostFlow Logo" />
 </div>
 
-BoostFlow is an AI-powered productivity platform designed to help teams automate repetitive tasks, manage projects efficiently, and enhance collaboration across organizations of all sizes.
+Source code for the B.Sc. Thesis **"Design and Implementation of a DevSecOps Lifecycle"** by [Dimitrios Koutsompinas](https://github.com/KDim67).
 
-## Academic Attribution
+> **Historical Context**: The core application (BoostFlow) was originally developed as a team project for the DevOps course by [Dimitrios Koutsompinas](https://github.com/KDim67), [Evangelos Leivaditis](https://github.com/EvanLei-git), and [Nikolaos Douros](https://github.com/nikosd767).
+>
+> **Thesis Scope**: All commits after tag `team-submission-final` (Date: 12/09/2025) represent the individual work of [Dimitrios Koutsompinas](https://github.com/KDim67).
 
-This repository contains the source code for the B.Sc. Thesis "Design and Implementation of a DevSecOps Lifecycle"
+BoostFlow is an AI-powered team productivity platform (Next.js, Firebase, TypeScript) used as the target application for this pipeline. For web application documentation, see [WEBAPP.md](WEBAPP.md).
 
-**Historical Context**: The core application (boostflow) was originally developed as a team project for the DevOps course by [Dimitrios Koutsompinas](https://github.com/KDim67), [Evangelos Leivaditis](https://github.com/EvanLei-git), and [Nikolaos Douros](https://github.com/nikosd767).
+For the Kubernetes manifests and platform configuration (GitOps), see [boostflow-thesis-config](https://github.com/KDim67/boostflow-thesis-config).
 
-**Thesis Scope**: All commits after tag `team-submission-final` (Date: 12/09/2025) represent the individual work of [Dimitrios Koutsompinas](https://github.com/KDim67).
+## Repository Layout
 
-## Home Page
+This project uses a **two-repository structure**:
 
-<img src="public/previews/main_page_preview.png" alt="Home Page" width="800" />
+- **boostflow-thesis** (this repo): contains the Next.js application source code alongside all CI/CD pipeline definitions, security scanner configurations, OPA policies, and Ansible infrastructure provisioning.
+- **[boostflow-thesis-config](https://github.com/KDim67/boostflow-thesis-config)**: GitOps repository holding Kubernetes manifests, ArgoCD Application CRs, and platform component configurations (monitoring, security, compliance, backup). Jenkins updates the image digest in this repo; ArgoCD syncs changes to the cluster.
 
-## Features
+## Pipeline Overview
 
-- **Task Management**: Comprehensive task organization and tracking tools with AI-powered insights to help teams prioritize work, manage deadlines, and optimize productivity
-- **AI-Powered Analytics**: Get intelligent insights about project performance with AI that analyzes task patterns, team productivity, and identifies optimization opportunities
-- **Team Collaboration**: Connect your team with powerful communication tools including organized channels, direct messaging, and real-time collaboration features
-- **Project Management**: Comprehensive project management tools with timeline tracking, budget management, and client information
-- **Advanced Security**: Security features to protect sensitive data and ensure compliance
-- **Customizable Workflows**: Tailor BoostFlow to your team's unique needs with flexible and customizable workflows
-- **Integration Ecosystem**: Seamlessly connect with your favorite tools and services
-- **Multiple Organizations**: Support for multiple organizations with role-based access control
-- **File Management**: Secure file upload, storage, and sharing capabilities
-- **Real-time Notifications**: Stay updated with instant notifications and alerts
+```mermaid
+flowchart TD
+    subgraph PRE["Pre-commit (Husky)"]
+        direction LR
+        A1["Gitleaks (Secrets)"] --> A2["lint-staged (ESLint + Prettier)"] --> A3["TypeScript type-check"]
+    end
 
-## Screenshots
+    subgraph PR["PR Quality Gate (GitHub Actions)"]
+        direction LR
+        B1["Gitleaks & GitGuardian"] --> B2["ESLint & TypeScript"] --> B3["npm audit (SCA)"] --> B4["Semgrep (SAST)"]
+    end
 
-Explore BoostFlow's intuitive interface and powerful features through these screenshots:
+    subgraph CI["CI Pipeline (Jenkins)"]
+        direction TB
+        subgraph CI_Sec["Security Scanning"]
+            direction LR
+            C1["npm audit (SCA)"] --> C2["Gitleaks (Secrets)"] --> C3["Semgrep (SAST)"] --> C4["Checkov (IaC)"] --> C5["OPA/Conftest (Policies)"]
+        end
 
-### AI Analytics
+        subgraph CI_Qual["Quality"]
+            direction LR
+            C6["Unit Tests (Jest)"] --> C7["SonarQube (Quality)"]
+        end
 
-<img src="public/previews/ai-analytics-preview.png" alt="AI Analytics" width="800" />
+        subgraph CI_Build["Build & Supply Chain"]
+            direction LR
+            C8["Docker Build"] --> C9["Syft (SBOM)"] --> C10["Trivy Scan"] --> C11["GHCR Push"] --> C12["Cosign (Signing)"] --> C13["SLSA Provenance"]
+        end
 
-_AI-powered analytics providing insights into team productivity and project performance_
+        subgraph CI_Deploy["Deploy & Verify"]
+            direction LR
+            C14["Update Manifest"] --> C15["Wait for Staging"] --> C16["kube-bench (CIS)"] --> C17["Trigger DAST"]
+        end
 
-### Communication Hub
+        CI_Sec --> CI_Qual --> CI_Build --> CI_Deploy
+    end
 
-<img src="public/previews/communication-hub-preview.png" alt="Communication Hub" width="800" />
+    subgraph DAST["DAST Pipeline (Jenkins)"]
+        direction LR
+        D1["Image Verification"] --> D2["OWASP ZAP Scan"] --> D3["Nuclei Scan"] --> D4["testssl.sh Audit"]
+    end
 
-_Team collaboration tools with organized channels and real-time messaging_
-
-### Organizations Management
-
-<img src="public/previews/organizations-preview.png" alt="Organizations" width="800" />
-
-_Multi-tenant organization management with role-based access control_
-
-### Workflow Automation
-
-<img src="public/previews/workflow-preview.png" alt="Workflow" width="800" />
-
-_Customizable workflow automation tools for streamlining repetitive tasks_
-
-## Getting Started
-
-Follow these steps to get up and running with BoostFlow quickly.
-
-### 1. Create Your Account
-
-Visit the signup page and follow the instructions to create your account.
-
-### 2. Create Your Organization
-
-After creating your account, you'll need to create or join an organization. Organizations are the main workspace where you'll manage your projects, tasks, and team members.
-
-- Choose a subscription plan (Free, Starter, Professional, or Enterprise)
-- Give your organization a name and description
-- Upload your company logo and set up branding
-- Configure organization settings
-
-### 3. Invite Team Members
-
-Build your team by inviting members to your organization with different roles and permissions:
-
-1. Navigate to the Team section in your organization
-2. Click "Invite Members" and enter email addresses
-3. Assign roles: Owner, Admin, Member, or Viewer
-4. Set permissions and access levels
-5. Send invitations to your team members
-
-### 4. Create Your First Project
-
-Projects are where you organize work within your organization. To create your first project:
-
-1. Navigate to the Projects section in your organization
-2. Click "New Project" and enter project details
-3. Set project timeline, budget, and client information
-4. Assign team members and define their roles
-5. Start adding tasks and setting up workflows
-6. Configure automation and integrations as needed
-
-## Development
-
-This project is a Next.js application with a Firebase backend and modern web technologies.
-
-### Technology Stack
-
-- **Next.js 15**: React framework for building web applications with App Router
-- **React 19**: Latest version of React with modern features
-- **TypeScript**: Strongly typed JavaScript for better development experience
-- **Firebase**: Backend services including Authentication, Firestore, and Storage
-- **Tailwind CSS 4**: Utility-first CSS framework for rapid UI development
-- **Firebase Admin**: Server-side Firebase operations
-- **Chart.js**: Data visualization library
-- **SendGrid**: Email service integration
-- **Google Generative AI**: AI-powered features
-- **MinIO**: Object storage service
-- **React Google Maps**: Google Maps integration
-
-### Prerequisites
-
-- **Node.js** (version 18 or higher)
-- **npm**
-- **Git**
-- **Firebase Project** (for backend services)
-
-### Installation
-
-1. **Clone the repository:**
-
-   ```bash
-   git clone https://github.com/your-repo/BoostFlow.git
-   cd BoostFlow
-   ```
-
-2. **Install dependencies:**
-
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables:**
-
-   Create a `.env.local` file in the root directory and add your configuration variables:
-
-   ```env
-   # Google Maps Configuration
-   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
-
-   # Firebase Configuration
-   NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
-   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-   NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-   NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
-   NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
-
-   # Firebase Service Account (Server-side only)
-   FIREBASE_SERVICE_ACCOUNT_KEY=your_firebase_service_account_json
-
-   # OAuth Client IDs (used client-side for OAuth redirects)
-   NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_client_id
-   NEXT_PUBLIC_GITHUB_CLIENT_ID=your_github_client_id
-
-   # OAuth Secrets (Server-side only)
-   GOOGLE_CLIENT_ID=your_google_client_id
-   GOOGLE_CLIENT_SECRET=your_google_client_secret
-   GITHUB_CLIENT_ID=your_github_client_id
-   GITHUB_CLIENT_SECRET=your_github_client_secret
-
-   # MinIO Configuration
-   MINIO_ENDPOINT=your_minio_endpoint
-   MINIO_EXTERNAL_ENDPOINT=your_minio_external_endpoint
-   MINIO_PORT=9000
-   MINIO_ROOT_USER=your_minio_root_user
-   MINIO_ROOT_PASSWORD=your_minio_root_password
-   MINIO_USE_SSL=false
-
-   # MinIO Bucket Names
-   MINIO_PROFILE_PICTURES_BUCKET=profile-pictures
-   MINIO_PROJECT_DOCUMENTS_BUCKET=project-documents
-
-   # Email Configuration (Development - MailHog)
-   MAILHOG_HOST=localhost
-   MAILHOG_PORT=1025
-
-   # Email Configuration (Production - SendGrid)
-   SENDGRID_API_KEY=your_sendgrid_api_key
-
-   # Email General
-   EMAIL_PROVIDER=mailhog
-   DEFAULT_FROM_EMAIL=noreply@yourdomain.com
-
-   # Application Configuration
-   NODE_ENV=development
-   NEXT_PUBLIC_APP_URL=https://yourdomain.com
-   ```
-
-### Running the Application
-
-#### Production Build (Test)
-
-To build the application for production:
-
-```bash
-npm run build
+    PRE --> PR --> CI --> DAST
 ```
 
-#### Development Mode
+## CI Pipeline
 
-To run the application in development mode:
+The main Jenkins pipeline (`Jenkinsfile`) executes the following stages sequentially.
 
-```bash
-npm run dev
-```
+### Security Scanning
 
-The application will start and be available at `http://localhost:3000` by default.
+Secret detection and static analysis run in three layers — pre-commit hooks, GitHub Actions on PR, and the Jenkins CI pipeline — so that issues are caught as early as possible and nothing reaches `main` unchecked.
 
-## Database Information
+- **npm audit**: SCA; fails on CRITICAL, marks unstable on HIGH. Report: `npm-audit.json`
+- **Gitleaks**: secret detection across full repository history. Pinned image `zricethezav/gitleaks:v8.21.2`. Configured via `.gitleaks.toml` (custom rules for Firebase, SendGrid, MinIO, OAuth, Gemini keys). Report: SARIF format
+- **Semgrep SAST**: pattern-based static analysis targeting application-layer vulnerabilities (injection, auth bypass, insecure config). Rulesets: `p/typescript`, `p/javascript`, `p/react`, `p/security-audit`, `p/secrets`. Scans `src/` directory. Pinned image `semgrep/semgrep:1.95.0`. Reports: SARIF + JSON + text
+- **Checkov IaC**: Dockerfile policy scanning against CIS benchmarks. Pinned image `bridgecrew/checkov:3.2.256`. Fails on any violation
+- **OPA/Conftest**: custom Rego policy enforcement on Dockerfile and Kubernetes manifests (clones config repo to scan `app-deployment.yaml` and `minio-statefulset.yaml`). Policies in `policies/` directory. Pinned image `openpolicyagent/conftest:v0.56.0`
 
-BoostFlow uses Firebase Firestore as its primary database. No additional database installation is needed locally. The application will connect to Firestore automatically when started with proper configuration.
+### Quality
 
-### Firebase Services Used
+Code must pass both functional tests and a SonarQube quality gate before the image is built.
 
-- **Authentication**: User authentication and authorization
-- **Firestore**: NoSQL document database for application data
-- **Storage**: File storage for documents, images, and other assets
-- **Cloud Functions**: Server-side logic
+- **Unit Tests**: `npm run test:coverage` with Jest. JUnit report archived
+- **SonarQube**: code quality and coverage analysis. Pinned scanner image `sonarsource/sonar-scanner-cli:11.1`. Configured via `sonar-project.properties`. Quality gate enforced (`sonar.qualitygate.wait=true`)
 
-## Project Structure
+### Build & Supply Chain
 
-```
-src/
-├── app/                    # Next.js App Router pages
-│   ├── api/               # API routes
-│   ├── organizations/     # Organization management
-│   ├── auth/             # Authentication pages
-│   ├── features/         # Feature showcase
-│   └── platform-admin/   # Admin panel
-├── components/           # Reusable React components
-├── lib/                 # Utility functions and configurations
-│   ├── firebase/        # Firebase configuration
-│   └── hooks/          # Custom React hooks
-└── middleware/         # Next.js middleware
-```
+The image is built with a hardened multi-stage Dockerfile, then wrapped in a verifiable supply chain: SBOM, vulnerability scan, cryptographic signature, and SLSA provenance — all before it reaches the registry.
 
-## Key Features Implementation
+- **Docker Build**: multi-stage build. Builder: `node:20-alpine`. Production: pinned `distroless/nodejs20-debian12` (by SHA256 digest). Distroless eliminates the OS package manager, shell, and all non-essential binaries — reducing the attack surface to just the Node.js runtime. Runs as non-root user (UID 65532) with read-only root filesystem. BuildKit `--secret` mounts inject environment variables at build time without persisting them in any image layer. Healthcheck included
+- **SBOM Generation**: Syft generates CycloneDX SBOMs from both `package-lock.json` (source dependencies) and the built Docker image (OS-level packages). Two SBOMs ensure both application and runtime dependencies are inventoried
+- **Trivy Vulnerability Scan**: scans both SBOMs. Fails on fixable CRITICAL vulnerabilities. Generates HTML report
+- **Push to GHCR**: pushes image with build-specific tag (`{BUILD_NUMBER}-{COMMIT_SHORT}`) and `latest`
+- **Cosign Signing**: signs the image by its immutable digest (not tag) using a key pair stored in Vault, ensuring that any tampering between push and deployment is detectable. Attaches the CycloneDX SBOM as a signed attestation, binding the dependency inventory to the exact image that was scanned
+- **SLSA Provenance**: generates a [SLSA](https://slsa.dev/) provenance attestation recording _what_ was built, _from which_ source commit, _by which_ builder, and _when_. Attached to the image via Cosign so downstream consumers can verify build origin. At deploy time, a Kyverno admission policy verifies the Cosign signature before the cluster accepts the image (see [Infrastructure Provisioning](#infrastructure-provisioning))
 
-### Authentication
+### Deploy & Verify
 
-- Firebase Authentication with email/password
-- OAuth integration (Google, GitHub)
-- Role-based access control
-- Email verification system
+Deployment is fully GitOps-driven: the pipeline never talks to the cluster directly — it pushes a manifest change and waits for ArgoCD to reconcile.
 
-### Organizations & Projects
+- **Update K8s Manifest**: clones `boostflow-thesis-config`, updates image digest in `app-deployment.yaml` via `sed`, commits and pushes
+- **Wait for Staging**: polls until ArgoCD syncs the new digest. Verifies rollout status and health endpoint (`/api/health`)
+- **CIS Benchmark**: triggers a kube-bench Job (from the CronJob in the compliance namespace). Archives results
+- **Trigger DAST**: fires the separate DAST pipeline (`boostflow-dast`) asynchronously, passing image tag and source build URL
 
-- Multi organization support
-- Project management with timelines and budgets
-- Team member invitation system
-- File upload and document management
+## DAST Pipeline
 
-### AI Integration
+Separate Jenkins pipeline (`Jenkinsfile.dast`) triggered after successful CI deployment.
 
-- Google Generative AI for insights and automation
-- Project analytics and performance tracking
-- Automated task suggestions
+- **Image Verification**: confirms the running deployment matches the expected digest from the config repo before scanning
+- **OWASP ZAP**: baseline scan against staging URL. Uses `ghcr.io/zaproxy/zaproxy:stable`. Configured via `zap.conf` (tuned ignore rules for Next.js/Firebase-specific false positives). Exit code 1 = FAIL (blocks), 2 = WARN (unstable)
+- **Nuclei**: vulnerability scanning with `projectdiscovery/nuclei:v3.3.5`. Severity filter: medium, high, critical. Rate-limited (50 req/s, 5 concurrent). Fails on critical/high findings
+- **testssl.sh**: TLS/SSL configuration audit with `drwetter/testssl.sh:3.2`. Report archived as JSON
 
-### Communication
+Both pipelines send HTML email notifications (success/failure/unstable) via `mail`.
 
-- Real-time notifications
-- Team collaboration tools
-- Email integration with SendGrid
+## PR Quality Gate
 
----
+**PR Checks** (`.github/workflows/pr-checks.yml`) — runs on pull requests to `main`:
 
-**Note**: Make sure to configure all environment variables properly before running the application. The application requires active Firebase project and proper API keys for full functionality.
+- ESLint (`npm run lint`)
+- TypeScript type-check (`npm run type-check`)
+- npm audit (`--audit-level=high`)
+- Semgrep (same rulesets as CI: typescript, javascript, react, security-audit, secrets)
+- Gitleaks
+
+**GitGuardian** (`.github/workflows/gitguardian.yml`) — runs on push and PR to `main`:
+
+- GitGuardian secret scanning via `ggshield-action@v1`
+
+## Pre-commit Hooks
+
+Husky pre-commit hook (`.husky/pre-commit`) runs three checks before each commit:
+
+1. **Gitleaks** — scans staged files for secrets (if installed locally)
+2. **lint-staged** — runs ESLint `--fix` and Prettier `--write` on staged `.js/.jsx/.ts/.tsx` files; Prettier on `.json/.md/.yaml/.yml` (configured in `.lintstagedrc.json`)
+3. **TypeScript type-check** — `npm run type-check`
+
+## OPA Policies
+
+Three Rego policy files in `policies/` enforce organizational standards via Conftest. These are evaluated in the CI pipeline's OPA/Conftest stage against the Dockerfile and Kubernetes manifests from the config repo.
+
+**`dockerfile.rego`** — Dockerfile hardening:
+
+- Base images must be pinned by version or digest (no `latest`, no untagged)
+- Must include a `USER` instruction (non-root)
+- `COPY` over `ADD` for local files
+- Blocks piping `curl`/`wget` to shell (`curl | bash`)
+
+**`kubernetes.rego`** — Kubernetes manifest security (applies to Deployments and StatefulSets):
+
+- Containers must run as non-root (`runAsNonRoot: true`)
+- Privilege escalation must be disabled
+- Root filesystem must be read-only
+- All capabilities must be dropped (`drop: [ALL]`)
+- Resource requests and limits must be set
+- Liveness and readiness probes required
+- No `hostNetwork` or `hostPID`
+- Images must be pinned by SHA256 digest
+- `automountServiceAccountToken` must be false
+- Seccomp profile must be set
+
+**`firebase.rego`** — Firebase Firestore rules:
+
+- Denies wide-open read or write access on any collection (`read: true` / `write: true`)
+
+## Infrastructure Provisioning
+
+The `ansible/` directory contains an Ansible playbook that provisions a single-node Kubernetes cluster from scratch.
+
+**Playbook**: `ansible/playbooks/provision-cluster.yml`
+
+What it provisions (in order):
+
+1. System preparation — disable swap, load kernel modules, configure sysctl for Kubernetes networking
+2. Container runtime — containerd with SystemdCgroup
+3. Kubernetes — kubeadm init, Calico CNI, single-node (control-plane taint removed)
+4. Storage — Rancher Local Path Provisioner (default StorageClass)
+5. Helm + Helm repos
+6. Namespaces with Pod Security Standards (restricted for app/backup, privileged for compliance)
+7. Ingress — NGINX Ingress Controller
+8. GitOps — ArgoCD + repository credentials + root Application (App-of-Apps)
+9. Automation — AWX Operator + AWX instance
+10. Secrets management — HashiCorp Vault (via dedicated Ansible role `ansible/roles/vault/`)
+11. Image signature verification — Kyverno admission controller with a `verifyImages` ClusterPolicy that checks Cosign signatures on every Pod admitted to the application namespace. This closes the supply chain loop: the CI pipeline signs the image after build, and Kyverno rejects any image that wasn't signed with the matching key
+12. GHCR pull secret for the application namespace
+13. CI/CD tooling — custom Jenkins container (from `Dockerfile.jenkins`), SonarQube container
+
+**Supporting files**:
+
+- `ansible/inventory/` — staging and production inventory files
+- `ansible/group_vars/` — variable definitions (Kubernetes versions, Helm chart versions, network CIDRs)
+- `ansible/secrets.vault.yml` — Ansible Vault-encrypted secrets
+- `ansible/roles/vault/` — Ansible role for HashiCorp Vault deployment and configuration
+
+## Jenkins Agent
+
+Custom Jenkins agent image defined in `Dockerfile.jenkins`. Based on `jenkins/jenkins:lts`, extended with:
+
+| Tool       | Role in Pipeline                                                |
+| ---------- | --------------------------------------------------------------- |
+| Node.js 20 | Runs `npm ci`, Jest tests, and the Next.js production build     |
+| Docker CLI | Builds the application image and pushes to GHCR                 |
+| Syft       | Generates CycloneDX SBOMs from source and image                 |
+| Trivy      | Scans SBOMs for HIGH/CRITICAL vulnerabilities                   |
+| Cosign     | Signs images by digest and attaches SBOM/SLSA attestations      |
+| kubectl    | Polls deployment rollout, triggers kube-bench, reads pod status |
+
+## Scanner Configuration
+
+Configuration files that tune security scanner behavior:
+
+| File                       | Scanner   | Purpose                                                                                                                                                              |
+| -------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.gitleaks.toml`           | Gitleaks  | Custom rules for Firebase, SendGrid, MinIO, OAuth, and Gemini API keys. Allowlist for false positives in example/template files                                      |
+| `.semgrepignore`           | Semgrep   | Excluded paths/patterns                                                                                                                                              |
+| `zap.conf`                 | OWASP ZAP | Tuned alert rules — ignores informational and Next.js/Firebase-specific false positives (e.g., `unsafe-inline` for Tailwind, HttpOnly for CSRF double-submit cookie) |
+| `sonar-project.properties` | SonarQube | Source paths, coverage paths, exclusions (UI components, Firebase infra), quality gate enforcement                                                                   |
