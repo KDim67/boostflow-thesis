@@ -20,7 +20,11 @@ COPY package*.json ./
 # Install dependencies (including dev deps needed for build)
 # Also explicitly install the musl-specific Tailwind CSS oxide binary
 # since npm ci on Alpine doesn't always resolve the correct platform variant
-RUN npm ci && npm install @tailwindcss/oxide-linux-x64-musl lightningcss-linux-x64-musl
+RUN npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm ci --maxsockets 20 && \
+    npm install --maxsockets 20 @tailwindcss/oxide-linux-x64-musl lightningcss-linux-x64-musl
 
 # Copy source code
 COPY . .

@@ -66,7 +66,10 @@ pipeline {
                 sh '''
                     node --version
                     npm --version
-                    npm ci --audit-level=critical
+                    npm config set fetch-retries 5
+                    npm config set fetch-retry-mintimeout 20000
+                    npm config set fetch-retry-maxtimeout 120000
+                    npm ci --audit-level=critical --maxsockets 20
                 '''
             }
         }
