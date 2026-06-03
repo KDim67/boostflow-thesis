@@ -840,23 +840,17 @@ EOF
             echo 'Pipeline completed successfully!'
             echo "Image available at: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
             echo "Image available at: ${FULL_IMAGE_NAME}:latest"
-            mail to: 'admin@boostflow-thesis.me',
-                 subject: "SUCCESS: BoostFlow CI/CD - Build #${env.BUILD_NUMBER}",
-                 body: "The BoostFlow pipeline completed successfully.\\n\\nCommit: ${env.GIT_COMMIT_SHORT}\\nBuild URL: ${env.BUILD_URL}\\nCheck Jenkins for security reports."
+            sendHtmlEmail('SUCCESS', 'The BoostFlow pipeline completed successfully.')
         }
         
         failure {
             echo 'Pipeline failed! Check the logs for details.'
-            mail to: 'admin@boostflow-thesis.me',
-                 subject: "FAILED: BoostFlow CI/CD - Build #${env.BUILD_NUMBER}",
-                 body: "The BoostFlow pipeline FAILED.\\n\\nCommit: ${env.GIT_COMMIT_SHORT}\\nBuild URL: ${env.BUILD_URL}\\nImmediate action required to fix the build."
+            sendHtmlEmail('FAILURE', 'The BoostFlow pipeline FAILED. Immediate action is required to fix the build.')
         }
 
         unstable {
             echo 'Pipeline is UNSTABLE - quality gates reported non-blocking findings. Review archived reports.'
-            mail to: 'admin@boostflow-thesis.me',
-                 subject: "UNSTABLE: BoostFlow CI/CD - Build #${env.BUILD_NUMBER}",
-                 body: "The BoostFlow pipeline finished, but some security tests (like high vulnerabilities) failed.\\n\\nCommit: ${env.GIT_COMMIT_SHORT}\\nBuild URL: ${env.BUILD_URL}\\nPlease review the security reports immediately."
+            sendHtmlEmail('UNSTABLE', 'The BoostFlow pipeline finished, but some security tests (like high vulnerabilities) failed. Please review the security reports immediately.')
         }
         
         cleanup {
@@ -871,4 +865,41 @@ EOF
             """
         }
     }
+}
+
+def sendHtmlEmail(String status, String description) {
+    def accentColor = status == 'SUCCESS' ? '#10b981' : (status == 'FAILURE' ? '#ef4444' : '#f59e0b')
+    def targetUrl = env.BUILD_URL
+    def subject = "${status}: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}"
+    
+    def body = """
+        <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 24px; background-color: #0f172a; color: #f8fafc; border-radius: 8px; max-width: 550px; margin: 0 auto; border: 1px solid #334155; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+            <h2 style="color: ${accentColor}; margin-top: 0; font-size: 20px; font-weight: 700; border-bottom: 2px solid ${accentColor}; padding-bottom: 10px;">
+                ${status}: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}
+            </h2>
+            <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1; margin: 15px 0;">
+                ${description}
+            </p>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
+                <tr style="border-bottom: 1px solid #334155;">
+                    <td style="padding: 8px 0; color: #94a3b8; font-weight: 600;">Commit</td>
+                    <td style="padding: 8px 0; color: #ffffff; font-family: monospace; font-weight: bold;">${env.GIT_COMMIT_SHORT ?: 'N/A'}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #334155;">
+                    <td style="padding: 8px 0; color: #94a3b8; font-weight: 600;">Branch</td>
+                    <td style="padding: 8px 0; color: #ffffff;">${env.GIT_BRANCH ?: 'main'}</td>
+                </tr>
+            </table>
+            <div style="margin-top: 25px; text-align: center;">
+                <a href="${targetUrl}" style="background-color: #3b82f6; border: 1px solid #2563eb; color: #ffffff; padding: 10px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; font-size: 14px;">
+                    View Build
+                </a>
+            </div>
+        </div>
+    """
+    
+    mail to: 'admin@boostflow-thesis.me',
+         mimeType: 'text/html',
+         subject: subject,
+         body: body
 }

@@ -25,7 +25,11 @@ pipeline {
         stage('Prepare') {
             steps {
                 cleanWs()
-                checkout scm
+                script {
+                    def scmVars = checkout scm
+                    env.GIT_COMMIT_SHORT = scmVars.GIT_COMMIT ? scmVars.GIT_COMMIT.take(7) : 'manual'
+                    env.GIT_BRANCH = scmVars.GIT_BRANCH ?: 'main'
+                }
                 sh "mkdir -p ${REPORTS_DIR}"
                 script {
                     def selectedTarget = params.TARGET_URL?.trim()
@@ -322,14 +326,54 @@ pipeline {
 
         success {
             echo 'DAST pipeline completed successfully!'
+            sendHtmlEmail('SUCCESS', 'The BoostFlow DAST security scanning completed successfully.')
         }
 
         failure {
             echo 'DAST pipeline failed! Check the reports and logs for details.'
+            sendHtmlEmail('FAILURE', 'The BoostFlow DAST security scanning FAILED. Immediate action is required to resolve identified critical/high vulnerabilities.')
         }
 
         unstable {
             echo 'DAST pipeline is UNSTABLE - non-blocking findings reported. Review archived reports.'
+            sendHtmlEmail('UNSTABLE', 'The BoostFlow DAST security scanning finished with warnings or medium security findings.')
         }
     }
+}
+
+def sendHtmlEmail(String status, String description) {
+    def accentColor = status == 'SUCCESS' ? '#10b981' : (status == 'FAILURE' ? '#ef4444' : '#f59e0b')
+    def targetUrl = env.BUILD_URL
+    def subject = "${status}: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}"
+    
+    def body = """
+        <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 24px; background-color: #0f172a; color: #f8fafc; border-radius: 8px; max-width: 550px; margin: 0 auto; border: 1px solid #334155; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+            <h2 style="color: ${accentColor}; margin-top: 0; font-size: 20px; font-weight: 700; border-bottom: 2px solid ${accentColor}; padding-bottom: 10px;">
+                ${status}: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}
+            </h2>
+            <p style="font-size: 15px; line-height: 1.6; color: #cbd5e1; margin: 15px 0;">
+                ${description}
+            </p>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
+                <tr style="border-bottom: 1px solid #334155;">
+                    <td style="padding: 8px 0; color: #94a3b8; font-weight: 600;">Commit</td>
+                    <td style="padding: 8px 0; color: #ffffff; font-family: monospace; font-weight: bold;">${env.GIT_COMMIT_SHORT ?: 'N/A'}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #334155;">
+                    <td style="padding: 8px 0; color: #94a3b8; font-weight: 600;">Branch</td>
+                    <td style="padding: 8px 0; color: #ffffff;">${env.GIT_BRANCH ?: 'main'}</td>
+                </tr>
+            </table>
+            <div style="margin-top: 25px; text-align: center;">
+                <a href="${targetUrl}" style="background-color: #3b82f6; border: 1px solid #2563eb; color: #ffffff; padding: 10px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; font-size: 14px;">
+                    View Build
+                </a>
+            </div>
+        </div>
+    """
+    
+    mail to: 'admin@boostflow-thesis.me',
+         mimeType: 'text/html',
+         subject: subject,
+         body: body
 }
