@@ -590,24 +590,17 @@ EOF
                     ]]) {
                         sh '''
                             set -e
-                            umask 077
-                            mkdir -p .cosign
-                            trap 'rm -rf .cosign' EXIT INT TERM
-                            printf %s "$COSIGN_KEY" > .cosign/cosign.key
-                            printf %s "$COSIGN_PUB" > .cosign/cosign.pub
-                            export COSIGN_KEY_FILE=$(pwd)/.cosign/cosign.key
-                            export COSIGN_PUB_FILE=$(pwd)/.cosign/cosign.pub
                             export COSIGN_REPOSITORY='''+FULL_IMAGE_NAME+'''
                             cosign login ghcr.io -u '''+GITHUB_USER+''' -p $GITHUB_TOKEN
-                            cosign sign --yes --key $COSIGN_KEY_FILE '''+env.IMAGE_DIGEST+'''
-                            cosign verify --key $COSIGN_PUB_FILE '''+env.IMAGE_DIGEST+'''
+                            cosign sign --yes --key env://COSIGN_KEY '''+env.IMAGE_DIGEST+'''
+                            cosign verify --key env://COSIGN_PUB '''+env.IMAGE_DIGEST+'''
                             cosign attest --yes \
-                                --key $COSIGN_KEY_FILE \
+                                --key env://COSIGN_KEY \
                                 --type cyclonedx \
                                 --predicate '''+REPORTS_DIR+'''/sbom-image.cyclonedx.json \
                                 '''+env.IMAGE_DIGEST+'''
                             cosign verify-attestation \
-                                --key $COSIGN_PUB_FILE \
+                                --key env://COSIGN_PUB \
                                 --type cyclonedx \
                                 '''+env.IMAGE_DIGEST+''' > /dev/null
                         '''
@@ -665,22 +658,15 @@ EOF
 
                         sh '''
                             set -e
-                            umask 077
-                            mkdir -p .cosign
-                            trap 'rm -rf .cosign' EXIT INT TERM
-                            printf %s "$COSIGN_KEY" > .cosign/cosign.key
-                            printf %s "$COSIGN_PUB" > .cosign/cosign.pub
-                            export COSIGN_KEY_FILE=$(pwd)/.cosign/cosign.key
-                            export COSIGN_PUB_FILE=$(pwd)/.cosign/cosign.pub
                             export COSIGN_REPOSITORY='''+FULL_IMAGE_NAME+'''
                             cosign login ghcr.io -u '''+GITHUB_USER+''' -p $GITHUB_TOKEN
                             cosign attest --yes \
-                                --key $COSIGN_KEY_FILE \
+                                --key env://COSIGN_KEY \
                                 --type slsaprovenance \
                                 --predicate '''+REPORTS_DIR+'''/slsa-provenance.json \
                                 '''+env.IMAGE_DIGEST+'''
                             cosign verify-attestation \
-                                --key $COSIGN_PUB_FILE \
+                                --key env://COSIGN_PUB \
                                 --type slsaprovenance \
                                 '''+env.IMAGE_DIGEST+''' > /dev/null
                         '''
