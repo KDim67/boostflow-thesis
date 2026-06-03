@@ -198,6 +198,19 @@
         owner: "{{ real_user.stdout }}"
         mode: "0644"
 
+    - name: Harden kubelet service file permissions
+      file:
+        path: /lib/systemd/system/kubelet.service
+        mode: "0600"
+      ignore_errors: true
+
+    - name: Harden kubelet configuration file permissions
+      file:
+        path: /var/lib/kubelet/config.yaml
+        mode: "0600"
+      ignore_errors: true
+
+
     - name: Remove control-plane taint (single-node cluster)
       command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
       register: taint_result
