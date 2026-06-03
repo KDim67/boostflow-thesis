@@ -92,6 +92,9 @@
         - { key: net.bridge.bridge-nf-call-iptables, value: "1" }
         - { key: net.bridge.bridge-nf-call-ip6tables, value: "1" }
         - { key: net.ipv4.ip_forward, value: "1" }
+        - { key: vm.overcommit_memory, value: "1" }
+        - { key: kernel.panic, value: "10" }
+        - { key: kernel.panic_on_oops, value: "1" }
 
     - name: Install required system packages
       apt:
@@ -210,6 +213,12 @@
         mode: "0600"
       ignore_errors: true
 
+    - name: Enforce protectKernelDefaults in Kubelet
+      lineinfile:
+        path: /var/lib/kubelet/config.yaml
+        line: "protectKernelDefaults: true"
+      notify: Restart kubelet
+      ignore_errors: true
 
     - name: Remove control-plane taint (single-node cluster)
       command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
@@ -287,11 +296,28 @@
         - { key: argo, value: "{{ helm_charts.argocd.repo }}" }
         - { key: awx-operator, value: "{{ helm_charts.awx_operator.repo }}" }
         - { key: kyverno, value: "{{ helm_charts.kyverno.repo }}" }
+        - {
+            key: metrics-server,
+            value: "https://kubernetes-sigs.github.io/metrics-server/",
+          }
       register: repo_result
       changed_when: "'has been added' in repo_result.stdout"
 
     - name: Update Helm repositories
       command: helm repo update
+
+    - name: Check if metrics-server is installed
+      command: helm status metrics-server -n kube-system
+      register: metrics_server_status
+      ignore_errors: true
+      changed_when: false
+
+    - name: Install metrics-server
+      command: >
+        helm install metrics-server metrics-server/metrics-server
+        --namespace kube-system
+        --set args={--kubelet-insecure-tls}
+      when: metrics_server_status.rc != 0
 
     - name: Check if ingress-nginx is installed
       command: helm status ingress-nginx -n {{ helm_charts.ingress_nginx.namespace }}
@@ -736,4 +762,9 @@
     - name: Restart containerd
       systemd:
         name: containerd
+        state: restarted
+
+    - name: Restart kubelet
+      systemd:
+        name: kubelet
         state: restarted

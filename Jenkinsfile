@@ -848,20 +848,29 @@ EOF
                 reportName: 'Trivy Vulnerability Report'
             ])
             echo 'Cleaning up workspace...'
+            cleanWs()
         }
-        
         success {
             echo 'Pipeline completed successfully!'
             echo "Image available at: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
             echo "Image available at: ${FULL_IMAGE_NAME}:latest"
+            mail to: 'admin@boostflow-thesis.me',
+                 subject: "SUCCESS: BoostFlow CI/CD - Build #${env.BUILD_NUMBER}",
+                 body: "The BoostFlow pipeline completed successfully.\\n\\nCommit: ${env.GIT_COMMIT_SHORT}\\nBuild URL: ${env.BUILD_URL}\\nCheck Jenkins for security reports."
         }
         
         failure {
             echo 'Pipeline failed! Check the logs for details.'
+            mail to: 'admin@boostflow-thesis.me',
+                 subject: "FAILED: BoostFlow CI/CD - Build #${env.BUILD_NUMBER}",
+                 body: "The BoostFlow pipeline FAILED.\\n\\nCommit: ${env.GIT_COMMIT_SHORT}\\nBuild URL: ${env.BUILD_URL}\\nImmediate action required to fix the build."
         }
 
         unstable {
             echo 'Pipeline is UNSTABLE - quality gates reported non-blocking findings. Review archived reports.'
+            mail to: 'admin@boostflow-thesis.me',
+                 subject: "UNSTABLE: BoostFlow CI/CD - Build #${env.BUILD_NUMBER}",
+                 body: "The BoostFlow pipeline finished, but some security tests (like high vulnerabilities) failed.\\n\\nCommit: ${env.GIT_COMMIT_SHORT}\\nBuild URL: ${env.BUILD_URL}\\nPlease review the security reports immediately."
         }
         
         cleanup {
