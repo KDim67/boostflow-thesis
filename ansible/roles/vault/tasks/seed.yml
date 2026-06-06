@@ -18,6 +18,7 @@
   loop: "{{ _vault_seed_items }}"
   loop_control:
     label: "boostflow/{{ item.key }}"
+  no_log: true
 
 - name: Seed KV v2 paths
   shell: |

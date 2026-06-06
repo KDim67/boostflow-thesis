@@ -130,18 +130,113 @@
         replace: "SystemdCgroup = true"
       register: containerd_config
 
-    - name: Restart containerd after config change
+    - name: Create containerd systemd override directory
+      file:
+        path: /etc/systemd/system/containerd.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure containerd dependency on NVMe mount
+      copy:
+        src: files/containerd-override.conf
+        dest: /etc/systemd/system/containerd.service.d/override.conf
+        owner: root
+        group: root
+        mode: "0644"
+      register: containerd_override
+
+    - name: Reload systemd daemon for containerd override
+      systemd:
+        daemon_reload: yes
+      when: containerd_override.changed
+
+    - name: Restart containerd after config or override change
       systemd:
         name: containerd
         state: restarted
         enabled: true
-      when: containerd_config.changed or cri_fix.changed
+      when: containerd_config.changed or cri_fix.changed or containerd_override.changed
 
     - name: Enable and start containerd
       systemd:
         name: containerd
         state: started
         enabled: true
+
+    - name: Copy containerd watchdog script
+      copy:
+        src: files/containerd-watchdog.sh
+        dest: /usr/local/bin/containerd-watchdog.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create containerd watchdog systemd service
+      copy:
+        src: files/containerd-watchdog.service
+        dest: /etc/systemd/system/containerd-watchdog.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: watchdog_service
+
+    - name: Create containerd watchdog systemd timer
+      copy:
+        src: files/containerd-watchdog.timer
+        dest: /etc/systemd/system/containerd-watchdog.timer
+        owner: root
+        group: root
+        mode: "0644"
+      register: watchdog_timer
+
+    - name: Reload systemd for containerd watchdog
+      systemd:
+        daemon_reload: yes
+      when: watchdog_service.changed or watchdog_timer.changed
+
+    - name: Enable and start containerd watchdog timer
+      systemd:
+        name: containerd-watchdog.timer
+        state: started
+        enabled: yes
+
+    - name: Configure logrotate for containerd watchdog
+      copy:
+        src: files/containerd-watchdog.logrotate
+        dest: /etc/logrotate.d/containerd-watchdog
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Create graceful shutdown hook script
+      copy:
+        src: files/kube-clean-shutdown.sh
+        dest: /usr/local/bin/kube-clean-shutdown.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create graceful shutdown hook systemd service
+      copy:
+        src: files/kube-clean-shutdown.service
+        dest: /etc/systemd/system/kube-clean-shutdown.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: shutdown_service
+
+    - name: Reload systemd for graceful shutdown service
+      systemd:
+        daemon_reload: yes
+      when: shutdown_service.changed
+
+    - name: Enable and start graceful shutdown service
+      systemd:
+        name: kube-clean-shutdown.service
+        enabled: yes
+        state: started
 
     - name: Add Kubernetes apt signing key
       shell: >

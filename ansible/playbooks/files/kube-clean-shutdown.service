@@ -1,0 +1,13 @@
+[Unit]
+Description=Graceful Kubernetes Shutdown Hook
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target containerd.service kubelet.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true
+ExecStop=/usr/local/bin/kube-clean-shutdown.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
