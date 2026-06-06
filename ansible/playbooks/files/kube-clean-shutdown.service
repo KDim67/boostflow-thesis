@@ -1,7 +1,8 @@
 [Unit]
 Description=Graceful Kubernetes Shutdown Hook
 DefaultDependencies=no
-Before=shutdown.target reboot.target halt.target containerd.service kubelet.service
+Conflicts=shutdown.target reboot.target halt.target poweroff.target
+Before=shutdown.target reboot.target halt.target poweroff.target containerd.service kubelet.service
 
 [Service]
 Type=oneshot

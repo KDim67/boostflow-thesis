@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-log() { echo "$(date --iso-8601=seconds): $*"; }
+log() {
+  local msg="$(date --iso-8601=seconds): $*"
+  echo "$msg"
+  echo "$msg" >> /var/log/kube-clean-shutdown.log
+}
 
 log "Initiating graceful single-node Kubernetes shutdown..."
 
