@@ -1,0 +1,6 @@
+# Force Unix line endings (LF) for scripts and systemd configurations
+*.sh text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+*.conf text eol=lf
+*.logrotate text eol=lf

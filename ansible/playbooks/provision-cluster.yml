@@ -139,7 +139,7 @@
         mode: "0755"
 
     - name: Configure containerd dependency on NVMe mount
-      copy:
+      template:
         src: files/containerd-override.conf
         dest: /etc/systemd/system/containerd.service.d/override.conf
         owner: root
@@ -166,7 +166,7 @@
         enabled: true
 
     - name: Copy containerd watchdog script
-      copy:
+      template:
         src: files/containerd-watchdog.sh
         dest: /usr/local/bin/containerd-watchdog.sh
         owner: root
@@ -174,7 +174,7 @@
         mode: "0755"
 
     - name: Create containerd watchdog systemd service
-      copy:
+      template:
         src: files/containerd-watchdog.service
         dest: /etc/systemd/system/containerd-watchdog.service
         owner: root
@@ -183,7 +183,7 @@
       register: watchdog_service
 
     - name: Create containerd watchdog systemd timer
-      copy:
+      template:
         src: files/containerd-watchdog.timer
         dest: /etc/systemd/system/containerd-watchdog.timer
         owner: root
@@ -203,7 +203,7 @@
         enabled: yes
 
     - name: Configure logrotate for containerd watchdog
-      copy:
+      template:
         src: files/containerd-watchdog.logrotate
         dest: /etc/logrotate.d/containerd-watchdog
         owner: root
@@ -211,7 +211,7 @@
         mode: "0644"
 
     - name: Create graceful shutdown hook script
-      copy:
+      template:
         src: files/kube-clean-shutdown.sh
         dest: /usr/local/bin/kube-clean-shutdown.sh
         owner: root
@@ -219,7 +219,7 @@
         mode: "0755"
 
     - name: Create graceful shutdown hook systemd service
-      copy:
+      template:
         src: files/kube-clean-shutdown.service
         dest: /etc/systemd/system/kube-clean-shutdown.service
         owner: root

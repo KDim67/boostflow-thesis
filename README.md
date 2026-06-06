@@ -2,6 +2,8 @@
 
 <div align="center">
   <img src="public/harokopioXboostflow.png" alt="BoostFlow Logo" />
+  
+  [![CodeQL Security Analysis](https://github.com/KDim67/boostflow-thesis/actions/workflows/codeql.yml/badge.svg)](https://github.com/KDim67/boostflow-thesis/actions/workflows/codeql.yml)
 </div>
 
 Source code for the B.Sc. Thesis **"Design and Implementation of a DevSecOps Lifecycle"** by [Dimitrios Koutsompinas](https://github.com/KDim67).
@@ -32,7 +34,7 @@ flowchart TD
 
     subgraph PR["PR Quality Gate (GitHub Actions)"]
         direction LR
-        B1["Gitleaks & GitGuardian"] --> B2["ESLint & TypeScript"] --> B3["npm audit (SCA)"] --> B4["Semgrep (SAST)"]
+        B1["Gitleaks & GitGuardian"] --> B2["ESLint & TypeScript"] --> B3["npm audit (SCA)"] --> B4["Semgrep (SAST)"] --> B5["CodeQL (SAST)"]
     end
 
     subgraph CI["CI Pipeline (Jenkins)"]
@@ -129,6 +131,10 @@ Both pipelines send HTML email notifications (success/failure/unstable) via `mai
 - npm audit (`--audit-level=high`)
 - Semgrep (same rulesets as CI: typescript, javascript, react, security-audit, secrets)
 - Gitleaks
+
+**CodeQL Security Analysis** (`.github/workflows/codeql.yml`) — runs on push and pull requests to `main`:
+
+- Semantic code analysis (SAST) for JavaScript/TypeScript vulnerabilities and security flaws
 
 **GitGuardian** (`.github/workflows/gitguardian.yml`) — runs on push and PR to `main`:
 
