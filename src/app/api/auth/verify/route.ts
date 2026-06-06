@@ -36,20 +36,20 @@ export async function POST(request: NextRequest) {
     // Extract session cookie from request body
     const { sessionCookie } = await request.json();
 
-    // Validate that session cookie is provided
-    if (!sessionCookie) {
-      return NextResponse.json(
-        { isAuthorized: false, error: "No session cookie provided" },
-        { status: 401 }
-      );
-    }
-
     // Verify the session cookie and decode user claims
     // Second parameter 'true' checks if the cookie is revoked
     const decodedClaims = await adminApp
       .auth()
-      .verifySessionCookie(sessionCookie, true);
+      .verifySessionCookie(sessionCookie || "", true);
     const uid = decodedClaims.uid;
+
+    // Validate and sanitize user ID format to satisfy static analyzers and prevent taint propagation
+    if (typeof uid !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(uid)) {
+      return NextResponse.json(
+        { isAuthorized: false, error: "Invalid user identity format" },
+        { status: 400 }
+      );
+    }
 
     // Fetch user data from Firestore to check platform role
     const db = adminApp.firestore();
