@@ -1,4 +1,5 @@
 /var/log/containerd-watchdog.log {
+    su root syslog
     weekly
     rotate 4
     compress
