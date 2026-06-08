@@ -228,5 +228,3 @@ Configuration files that tune security scanner behavior:
 | `.semgrepignore`           | Semgrep   | Excluded paths/patterns                                                                                                                                              |
 | `zap.conf`                 | OWASP ZAP | Tuned alert rules — ignores informational and Next.js/Firebase-specific false positives (e.g., `unsafe-inline` for Tailwind, HttpOnly for CSRF double-submit cookie) |
 | `sonar-project.properties` | SonarQube | Source paths, coverage paths, exclusions (UI components, Firebase infra), quality gate enforcement                                                                   |
-
-Testing PR checks for thesis screenshot.
